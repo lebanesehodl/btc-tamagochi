@@ -15,6 +15,7 @@ export class BlockWorker implements WorkerLike {
   private stopped = false;
   private lease: WorkerLease | null = null;
   private renewing = false;
+  private needsStoryBoundary = true;
   private readonly source: BlockSource;
 
   constructor(
@@ -23,6 +24,7 @@ export class BlockWorker implements WorkerLike {
     source?: BlockSource,
   ) {
     this.source = source ?? new EsploraBlockSource({ baseUrl: config.blockApiBaseUrl });
+    this.repository.beginChainObservation();
   }
 
   start(): void {
@@ -76,6 +78,7 @@ export class BlockWorker implements WorkerLike {
       await this.repository.markDegraded("Another block worker holds the active lease");
       return;
     }
+    const firstReconciliation = this.needsStoryBoundary;
     const cursor = await this.repository.chainCursor();
     if (!cursor) {
       const tipHash = await this.source.getTipHash();
@@ -86,13 +89,17 @@ export class BlockWorker implements WorkerLike {
         observedAt: new Date().toISOString(),
         syncStatus: "synced",
       }, this.lease);
+      this.needsStoryBoundary = false;
+      this.repository.completeChainObservation();
       return;
     }
     const known = await this.repository.knownActiveChain();
-    const storyWasLive = (await this.repository.snapshot()).chain.syncStatus === "synced";
+    const storyWasLive = !firstReconciliation && (await this.repository.snapshot()).chain.syncStatus === "synced";
     const transition = await reconcileChain(this.source, known);
     if (transition.disconnect.length === 0 && transition.connect.length === 0) {
-      await this.repository.markHealthy();
+      await this.repository.markHealthy(new Date().toISOString(), firstReconciliation, this.lease);
+      this.needsStoryBoundary = false;
+      this.repository.completeChainObservation();
       return;
     }
     const connect = transition.connect.map((block) => this.applyMeal(block));
@@ -103,6 +110,8 @@ export class BlockWorker implements WorkerLike {
       syncStatus: "synced",
       storyLive: storyWasLive && transition.disconnect.length === 0 && transition.connect.length === 1,
     }, this.lease);
+    this.needsStoryBoundary = false;
+    this.repository.completeChainObservation();
   }
 
   private applyMeal(block: AppliedBlock["block"]): AppliedBlock {

@@ -193,6 +193,11 @@ function episodeFromRow(row: EpisodeDatabaseRow | null): StoryEpisodeView | null
 
 export class WorldRepository {
   private readonly listeners = new Set<(event: WorldEvent) => void>();
+  // New BlockWorkers close this gate until their first fenced reconciliation commits.
+  private chainObservationInitialized = true;
+
+  beginChainObservation(): void { this.chainObservationInitialized = false; }
+  completeChainObservation(): void { this.chainObservationInitialized = true; }
 
   constructor(readonly pool: Pool, private readonly eventRetention = EVENT_RETENTION, private readonly demoEnabled = false) {}
 
@@ -357,23 +362,30 @@ export class WorldRepository {
     return event as WorldSnapshot;
   }
 
-  async markHealthy(observedAt = new Date().toISOString()): Promise<void> {
-    await this.setSyncStatus("synced", null, observedAt);
+  async markHealthy(observedAt = new Date().toISOString(), establishStoryBoundary = false, lease: WorkerLease | null = null): Promise<void> {
+    await this.setSyncStatus("synced", null, observedAt, establishStoryBoundary, lease);
   }
 
   async markDegraded(message: string, status: "degraded" | "paused" = "degraded"): Promise<void> {
     await this.setSyncStatus(status, message.slice(0, 300), new Date().toISOString());
   }
 
-  private async setSyncStatus(status: WorldSnapshot["chain"]["syncStatus"], lastError: string | null, observedAt: string): Promise<void> {
+  private async setSyncStatus(status: WorldSnapshot["chain"]["syncStatus"], lastError: string | null, observedAt: string, establishStoryBoundary = false, lease: WorkerLease | null = null): Promise<void> {
     const client = await this.pool.connect();
     let change: WorldSnapshot | null = null;
     try {
       await client.query("BEGIN");
+      if (lease) {
+        const current = await client.query(
+          "SELECT 1 FROM worker_leases WHERE name = 'blocks' AND owner = $1 AND fencing_token = $2 AND expires_at > now() FOR UPDATE",
+          [lease.owner, lease.fencingToken],
+        );
+        if (current.rowCount !== 1) throw new HttpError(409, "Block-worker lease is stale");
+      }
       const locked = await client.query("SELECT world_revision, sync_status, last_error FROM world_state FOR UPDATE");
       const before = locked.rows[0];
-      const changed = before.sync_status !== status || before.last_error !== lastError;
-      const recovering = status === "synced" && before.sync_status !== "synced";
+      const changed = before.sync_status !== status || before.last_error !== lastError || establishStoryBoundary;
+      const recovering = status === "synced" && (before.sync_status !== "synced" || establishStoryBoundary);
       if (recovering) {
         // Even a no-op reconciliation after an outage establishes a new live boundary.
         await client.query(
@@ -645,7 +657,7 @@ export class WorldRepository {
         if (priceCandidate && await available(priceCandidate.family)) selected = priceCandidate;
         if (!selected) {
           for (const candidate of mature.rows) {
-            if (world.rows[0]?.sync_status !== "synced") break;
+            if (world.rows[0]?.sync_status !== "synced" || !this.chainObservationInitialized) break;
             if (await available("hash-mischief")) {
               selected = { family: "hash-mischief", cause: {
                 kind: "hash", blockHash: candidate.block_hash, height: Number(candidate.height), storyVersion: STORY_RULE_VERSION,
