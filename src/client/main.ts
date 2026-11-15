@@ -45,7 +45,12 @@ function render(next: WorldSnapshot): void {
   }[next.chain.syncStatus];
 
   byId("pet-stage").textContent = next.pet.stage.toUpperCase();
-  byId("badger").className = `badger ${next.pet.stage} ${next.pet.mood}`;
+  const badger = byId<HTMLImageElement>("badger");
+  const sprite = next.pet.stage === "rowdy" ? "rowdy" : next.pet.mood === "joyful" ? "joyful" : "neutral";
+  const spriteUrl = `/satoshi/satoshi-${sprite}-48.png`;
+  if (badger.getAttribute("src") !== spriteUrl) badger.src = spriteUrl;
+  badger.alt = `Satoshi, the communal honey badger${sprite === "rowdy" ? ", now rowdy" : sprite === "joyful" ? ", looking joyful" : ""}`;
+  badger.className = `badger ${next.pet.stage} ${next.pet.mood}`;
   byId("den-scene").className = `den-scene mood-${next.pet.mood}`;
   byId("mood-label").textContent = next.pet.mood.toUpperCase();
   byId("meal-count").textContent = String(next.pet.meals);

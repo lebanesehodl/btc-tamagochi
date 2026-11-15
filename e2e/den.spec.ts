@@ -42,10 +42,18 @@ test("desktop meal, play, decoration, and inspected production render", async ({
   await page.goto("/");
   await expect(page).toHaveTitle(/Ratel/);
   await expect(page.locator("#badger")).toBeVisible();
+  await expect(page.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-neutral-48.png");
+  await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
+  expect(await page.locator("#badger").evaluate((image: HTMLImageElement) => ({ width: image.naturalWidth, height: image.naturalHeight }))).toEqual({ width: 48, height: 48 });
   await expect(page.locator("#block-height")).toHaveText("#101");
   await expect(page.locator("#food-name")).toHaveText("Berry bowl");
-  await page.getByRole("button", { name: /Play with the badger/ }).click();
-  await expect(page.locator("#joy-label")).toHaveText("JOY 50/100");
+  for (const joy of [50, 60, 70, 80]) {
+    await page.getByRole("button", { name: /Play with the badger/ }).click();
+    await expect(page.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
+  }
+  await expect(page.locator("#mood-label")).toHaveText("JOYFUL");
+  await expect(page.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-joyful-48.png");
+  await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
   await page.locator('[data-slot="wall"] [data-item="genesis-poster"]').click();
   await expect(page.locator("#den-wall")).toHaveClass(/genesis-poster/);
   await page.screenshot({ path: "artifacts/desktop.png", fullPage: true });
@@ -61,15 +69,21 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await b.goto("/");
   await expect(a.locator("#block-height")).toHaveText("#101");
   await expect(b.locator("#joy-label")).toHaveText("JOY 40/100");
-  await a.getByRole("button", { name: /Play with the badger/ }).click();
-  await expect(b.locator("#joy-label")).toHaveText("JOY 50/100");
+  for (const joy of [50, 60, 70, 80]) {
+    await a.getByRole("button", { name: /Play with the badger/ }).click();
+    await expect(a.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
+  }
+  await expect(b.locator("#joy-label")).toHaveText("JOY 80/100");
+  await expect(b.locator("#mood-label")).toHaveText("JOYFUL");
+  await expect(b.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-joyful-48.png");
+  await b.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
   await a.locator('[data-slot="wall"] [data-item="genesis-poster"]').click();
   await expect(b.locator("#den-wall")).toHaveClass(/genesis-poster/);
   await expect(b.locator('[data-slot="wall"] [data-item="badger-poster"]')).toBeDisabled();
   await b.screenshot({ path: "artifacts/second-visitor.png", fullPage: true });
 
   await b.getByRole("button", { name: /Play with the badger/ }).click();
-  await expect(a.locator("#joy-label")).toHaveText("JOY 60/100");
+  await expect(a.locator("#joy-label")).toHaveText("JOY 90/100");
   await first.close();
   await second.close();
 });
@@ -115,8 +129,15 @@ test("a committed new block feeds live and twelve blocks evolve the cub", async 
     await expect(page.locator("#block-height")).toHaveText("#102");
     await expect(page.locator("#food-name")).toHaveText("Warm porridge");
     await expect(page.locator("#meal-count")).toHaveText("3");
+    for (const joy of [50, 60, 70, 80]) {
+      await page.getByRole("button", { name: /Play with the badger/ }).click();
+      await expect(page.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
+    }
+    await expect(page.locator("#mood-label")).toHaveText("JOYFUL");
     await repository.applyTransition({ disconnect: [], connect: Array.from({ length: 10 }, (_, index) => applied(index + 103)), observedAt: new Date("2026-01-01T02:00:00Z").toISOString(), syncStatus: "synced" });
     await expect(page.locator("#pet-stage")).toHaveText("ROWDY");
+    await expect(page.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-rowdy-48.png");
+    await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
     await expect(page.locator("#growth-label")).toHaveText("Evolved after 12 blocks together.");
     await expect(page.locator("#announcement")).toHaveText("Satoshi is a rowdy badger now. Twelve blocks did it.");
     await page.screenshot({ path: "artifacts/evolved.png", fullPage: true });
@@ -129,6 +150,9 @@ test("mobile layout has no horizontal overflow and preserves controls", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.locator("#badger")).toBeVisible();
+  await expect(page.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-neutral-48.png");
+  await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
+  expect(await page.locator("#badger").evaluate((image) => getComputedStyle(image).imageRendering)).toBe("pixelated");
   await expect(page.locator("#block-height")).toHaveText("#101");
   await page.locator('[data-slot="floor"] [data-item="orange-rug"]').scrollIntoViewIfNeeded();
   await page.locator('[data-slot="floor"] [data-item="orange-rug"]').click();

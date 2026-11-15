@@ -31,11 +31,9 @@ h1 em { color: var(--bitcoin); font-style: normal; }
 .den-scene::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at center, #e6a95013, transparent 65%); pointer-events: none; }
 .den-grain { position: absolute; inset: 0; opacity: .25; background-image: repeating-linear-gradient(0deg, transparent 0 15px, #ae9b7f12 16px), repeating-linear-gradient(90deg, transparent 0 47px, #00000010 48px); }
 .den-floor-line { position: absolute; left: 0; right: 0; top: 65%; height: 2px; background: #62503a; }
-.badger { position: absolute; width: min(52%, 330px); height: auto; left: 50%; bottom: 17%; transform: translateX(-50%); image-rendering: pixelated; filter: drop-shadow(10px 12px 0 #100d09aa); transition: transform .2s; }
+.badger { position: absolute; width: 288px; height: 288px; left: 50%; bottom: 17%; transform: translateX(-50%); image-rendering: pixelated; filter: drop-shadow(6px 6px 0 #100d09aa); }
 .badger.eating { animation: badger-chomp .25s steps(2) 4; }
-.badger.rowdy { filter: drop-shadow(10px 12px 0 #100d09aa) saturate(1.2); }
-.badger.hungry { transform: translateX(-50%) scale(.96); }
-@keyframes badger-chomp { 50% { transform: translateX(-50%) translateY(6px) rotate(-2deg); } }
+@keyframes badger-chomp { 50% { transform: translateX(-50%) translateY(6px); } }
 .meal-bubble { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); color: var(--cream); background: #17130fee; border: 1px solid #645642; padding: 12px 18px; font-size: 11px; max-width: 80%; text-align: center; z-index: 3; }
 .food { position: absolute; left: calc(50% + 110px); bottom: 22%; width: 48px; height: 48px; background: #1e1915; border: 3px solid var(--cream); border-radius: 50%; box-shadow: 0 6px 0 #806b4e; display: grid; place-items: center; z-index: 2; }
 .food.hidden { display: none; }
@@ -104,7 +102,7 @@ footer { max-width: 1400px; margin: auto; padding: 24px 36px 44px; display: flex
   .block-card { padding: 18px; }
   .block-card strong { font-size: 28px; }
   .den-scene { min-height: 360px; }
-  .badger { width: 72%; bottom: 18%; }
+  .badger { width: 240px; height: 240px; bottom: 18%; }
   .food { left: 74%; bottom: 26%; }
   .meal-bubble { top: 20px; font-size: 9px; }
   .care-panel { grid-template-columns: 1fr; }
