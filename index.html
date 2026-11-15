@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17130f" />
+    <meta name="description" content="A shared honey badger that eats one meal per new Bitcoin block. Play with it and decorate its den. No account." />
+    <title>Ratel — the block-fed badger</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/client/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="/" aria-label="Ratel home"><span class="wordmark-mark">R</span><span>RATEL</span></a>
+      <div id="connection" class="connection starting" role="status"><span class="status-dot"></span><span id="connection-label">Finding the den…</span></div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <p class="eyebrow">ONE BLOCKCHAIN. ONE COMMUNAL BADGER.</p>
+          <h1 id="hero-title">Bitcoin brings the meals.<br /><em>Everyone brings the joy.</em></h1>
+          <p class="hero-copy">Satoshi is a small honey badger living on Bitcoin time. New blocks deliver food; visitors keep its den playful. Come back any time. Satoshi will be fine.</p>
+        </div>
+        <div class="block-card" aria-label="Latest processed Bitcoin block">
+          <span class="card-label">LATEST BLOCK MEAL</span>
+          <strong id="block-height">—</strong>
+          <code id="block-hash">Waiting for the chain…</code>
+          <span id="observed-at">Provider data not yet observed</span>
+        </div>
+      </section>
+
+      <section class="game-layout">
+        <div class="den-panel">
+          <div class="den-heading"><span>THE COMMUNAL DEN</span><span id="pet-stage">CUB</span></div>
+          <div id="den-scene" class="den-scene mood-content">
+            <div id="den-wall" class="den-decoration decoration-wall empty" aria-label="Wall decoration"></div>
+            <div id="den-corner" class="den-decoration decoration-corner empty" aria-label="Corner decoration"></div>
+            <div id="den-floor" class="den-decoration decoration-floor empty" aria-label="Floor decoration"></div>
+            <div class="den-grain"></div>
+            <div id="food" class="food hidden" aria-hidden="true"><span id="food-icon"></span></div>
+            <img id="badger" class="badger" src="/badger.svg" alt="Satoshi, the communal honey badger" width="320" height="240" />
+            <div id="meal-bubble" class="meal-bubble" aria-live="polite">A new block will bring dinner.</div>
+            <div class="den-floor-line"></div>
+          </div>
+          <div id="announcement" class="announcement" aria-live="polite">The badger is waiting for its first observed block.</div>
+          <div class="actions">
+            <button id="play-button" class="primary-action" type="button">Play with the badger <span>+JOY</span></button>
+            <span id="joy-label" class="joy-label">JOY —</span>
+          </div>
+        </div>
+
+        <aside class="care-panel">
+          <section class="status-section">
+            <div class="section-heading"><span>BADGER STATUS</span><span id="mood-label">WAITING</span></div>
+            <div class="stat-row"><span>Meals shared</span><strong id="meal-count">0</strong></div>
+            <div class="stat-row"><span>Fullness</span><strong id="fullness-label">—</strong></div>
+            <div class="growth-track"><progress id="growth-fill" max="12" value="0" aria-label="Growth toward evolution"></progress></div>
+            <p id="growth-label">Growth starts with the first block.</p>
+          </section>
+
+          <section class="pantry-section">
+            <div class="section-heading"><span>IN THE BOWL</span><span>BLOCK-FED</span></div>
+            <h2 id="food-name">Nothing yet</h2>
+            <p id="food-reaction">Every observed block delivers the same pantry item to everyone.</p>
+          </section>
+
+          <section class="decorate-section">
+            <div class="section-heading"><span>DECORATE THE DEN</span><span>CURATED • REVERSIBLE</span></div>
+            <p>Pick an open slot. Your contribution stays unless a moderator reverses it.</p>
+            <div id="decoration-controls" class="decoration-controls">
+              <div class="slot-control" data-slot="wall"><span>Wall</span><button type="button" data-item="genesis-poster">Genesis poster</button><button type="button" data-item="badger-poster">Badger poster</button></div>
+              <div class="slot-control" data-slot="floor"><span>Floor</span><button type="button" data-item="orange-rug">Orange rug</button><button type="button" data-item="forest-rug">Forest rug</button></div>
+              <div class="slot-control" data-slot="corner"><span>Corner</span><button type="button" data-item="amber-lamp">Amber lamp</button><button type="button" data-item="hardy-cactus">Hardy cactus</button></div>
+            </div>
+            <p id="action-error" class="action-error" role="alert"></p>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <footer><span>Ratel is a community project. Not affiliated with any business.</span><span>Block data is provider-reported, not independently consensus-verified.</span></footer>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>
