@@ -11,6 +11,7 @@ export class StoryWorker implements WorkerLike {
   private running: Promise<void> | null = null;
   private stopped = false;
   private lastFetchMs: number | null = null;
+  private needsPriceBaseline = true;
 
   constructor(
     private readonly repository: WorldRepository,
@@ -40,8 +41,11 @@ export class StoryWorker implements WorkerLike {
       try { price = await this.source.observe(now); }
       catch { price = null; }
     }
+    // A newly constructed worker must not treat persisted continuity as its own live observation history.
+    const rebaselinePrice = this.needsPriceBaseline;
     // Production episode time/date comes from PostgreSQL under the world lock, not the network runner's clock.
-    await this.repository.evaluateStory({ price });
+    await this.repository.evaluateStory({ price, rebaselinePrice });
+    if (price) this.needsPriceBaseline = false;
   }
 
   private schedule(): void {

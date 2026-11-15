@@ -36,6 +36,10 @@ describe("CoinGecko story quote contract", () => {
     expect(() => parseCoinGeckoObservation(rawBody("-6", Math.floor(now.getTime() / 1000) + 31), receipt, now)).toThrowError(expect.objectContaining({ code: "future" }));
     expect(() => parseCoinGeckoObservation("not json", receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
     expect(() => parseCoinGeckoObservation(`{"bitcoin":{"usd":1,"usd_24h_change":-6,"usd_24h_change":-7,"last_updated_at":${updated}}}`, receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
+    expect(() => parseCoinGeckoObservation(`{"bitcoin":{"usd":1,"usd_24h_change":-6,"usd_24h_change":null,"last_updated_at":${updated}}}`, receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
+    expect(() => parseCoinGeckoObservation(`{"bitcoin":{},"other_asset":{"usd":95000,"usd_24h_change":-6,"last_updated_at":${updated}}}`, receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
+    expect(() => parseCoinGeckoObservation(`{"bitcoin":{"usd":95000,"usd_24h_change":-6,"last_updated_at":${updated}},"bitcoin":{}}`, receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
+    expect(() => parseCoinGeckoObservation(`{"bitcoin":{"usd":95000,"usd_24h_change":"-6","last_updated_at":${updated}}}`, receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
     expect(() => parseCoinGeckoObservation(`{"bitcoin":{"usd":1,"last_updated_at":${updated}}}`, receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
     expect(() => parseCoinGeckoObservation(rawBody("-100"), receipt, now)).toThrowError(expect.objectContaining({ code: "shape" }));
   });

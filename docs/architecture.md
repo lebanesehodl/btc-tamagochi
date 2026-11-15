@@ -24,7 +24,7 @@ Anonymous sessions store SHA-256 hashes of 32-byte opaque tokens. Cookies are Ht
 
 ## Browser synchronization and publishing
 
-Browsers load a snapshot with a world revision, then consume committed changes over SSE. Each event stores a snapshot payload in `world_events`; the latest 1000 revisions are retained. Clients resume using `after`/native `Last-Event-ID`. The server sends a `reset` snapshot when the requested revision bridges missing history. A subscription queues changes while historical events are read and deduplicates by delivered revision, avoiding the read/subscribe race. Publishing happens only after commit. Comments act as keepalives, and Fastify force-closes live sockets during shutdown so redeployment does not hang on SSE.
+Browsers load a snapshot with a world revision, then consume committed changes over SSE. Each event stores a snapshot payload in `world_events`; the latest 1000 revisions are retained. Clients resume using `after`/native `Last-Event-ID`. The server sends a `reset` snapshot when the requested revision bridges missing history. A subscription queues changes while historical events are read and deduplicates by delivered revision, avoiding the read/subscribe race. Production passes the same `WorldRepository` instance to both workers and `buildApp`; worker commits therefore publish to the repository’s existing SSE subscribers. Publishing happens only after commit. Comments act as keepalives, and Fastify force-closes live sockets during shutdown so redeployment does not hang on SSE.
 
 ## Rendering and hosting
 

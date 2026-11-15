@@ -25,7 +25,7 @@ export interface BuildAppOptions {
   serveClient?: boolean;
   worker?: WorkerLike;
   rateLimiter?: ActionRateLimiter;
-  /** Test composition seam; production constructs the repository from the shared pool. */
+  /** Must be the same instance used by workers so their commits reach live SSE subscribers. */
   repository?: WorldRepository;
 }
 
@@ -74,6 +74,7 @@ function idempotencyKey(request: FastifyRequest): string {
 }
 
 export async function buildApp(config: AppConfig, pool: Pool, options: BuildAppOptions = {}): Promise<FastifyInstance> {
+  if (options.worker && !options.repository) throw new Error("Worker composition requires its shared WorldRepository");
   const app = Fastify({ bodyLimit: 16 * 1024, logger: false, trustProxy: config.production, forceCloseConnections: true });
   const repository = options.repository ?? new WorldRepository(pool, 1000, config.storyDemo === true);
   const rateLimiter = options.rateLimiter ?? new ActionRateLimiter();

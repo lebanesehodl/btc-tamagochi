@@ -51,13 +51,78 @@ export function priceZone(change: string): "neutral" | "down" | "up" {
   return "neutral";
 }
 
-function uniqueNumberToken(source: string, field: string): string {
-  const expression = new RegExp(`"${field}"\\s*:\\s*(${NUMBER_TOKEN})`, "g");
-  const matches = [...source.matchAll(expression)];
-  if (matches.length !== 1 || matches[0]?.[1] === undefined) {
-    throw new PriceDataError("shape", `Expected exactly one numeric ${field}`);
-  }
-  return matches[0][1];
+class RawNumberToken {
+  constructor(readonly token: string) {}
+}
+type RawJson = null | boolean | string | RawNumberToken | RawJson[] | { [key: string]: RawJson };
+
+/** Strict JSON decoding that rejects duplicate keys and preserves each number's original token. */
+function parseRawJson(source: string): RawJson {
+  let offset = 0;
+  const fail = (): never => { throw new PriceDataError("shape", "Provider returned invalid JSON"); };
+  const whitespace = () => { while (/[ \t\r\n]/.test(source[offset] ?? "")) offset++; };
+  const parseString = (): string => {
+    const start = offset;
+    if (source[offset++] !== '"') fail();
+    while (offset < source.length) {
+      if (source[offset] === "\\") offset += 2;
+      else if (source[offset++] === '"') return JSON.parse(source.slice(start, offset)) as string;
+    }
+    return fail();
+  };
+  const parseValue = (): RawJson => {
+    whitespace();
+    if (source[offset] === '"') return parseString();
+    if (source[offset] === "{") {
+      offset++;
+      const result: { [key: string]: RawJson } = Object.create(null);
+      const keys = new Set<string>();
+      whitespace();
+      if (source[offset] === "}") { offset++; return result; }
+      while (true) {
+        whitespace();
+        const key = parseString();
+        if (keys.has(key)) throw new PriceDataError("shape", "Provider returned duplicate JSON fields");
+        keys.add(key);
+        whitespace();
+        if (source[offset++] !== ":") fail();
+        result[key] = parseValue();
+        whitespace();
+        const separator = source[offset++];
+        if (separator === "}") return result;
+        if (separator !== ",") fail();
+      }
+    }
+    if (source[offset] === "[") {
+      offset++;
+      const result: RawJson[] = [];
+      whitespace();
+      if (source[offset] === "]") { offset++; return result; }
+      while (true) {
+        result.push(parseValue());
+        whitespace();
+        const separator = source[offset++];
+        if (separator === "]") return result;
+        if (separator !== ",") fail();
+      }
+    }
+    for (const [literal, value] of [["null", null], ["true", true], ["false", false]] as const) {
+      if (source.startsWith(literal, offset)) { offset += literal.length; return value; }
+    }
+    const match = new RegExp(`^${NUMBER_TOKEN}`).exec(source.slice(offset));
+    if (match === null) throw new PriceDataError("shape", "Provider returned invalid JSON");
+    offset += match[0].length;
+    return new RawNumberToken(match[0]);
+  };
+  const value = parseValue();
+  whitespace();
+  if (offset !== source.length) fail();
+  return value;
+}
+
+function requiredNumberToken(value: RawJson | undefined, field: string): string {
+  if (!(value instanceof RawNumberToken)) throw new PriceDataError("shape", `Expected numeric bitcoin.${field}`);
+  return value.token;
 }
 
 async function boundedBody(response: Response): Promise<string> {
@@ -86,14 +151,22 @@ async function boundedBody(response: Response): Promise<string> {
 }
 
 export function parseCoinGeckoObservation(source: string, receivedAt: Date, now: Date): PriceObservation {
-  let parsed: unknown;
-  try { parsed = JSON.parse(source); } catch { throw new PriceDataError("shape", "Provider returned invalid JSON"); }
-  const bitcoin = (parsed as { bitcoin?: unknown } | null)?.bitcoin;
-  if (!bitcoin || typeof bitcoin !== "object") throw new PriceDataError("shape", "Missing bitcoin quote");
+  let parsed: RawJson;
+  try { parsed = parseRawJson(source); } catch (error) {
+    if (error instanceof PriceDataError) throw error;
+    throw new PriceDataError("shape", "Provider returned invalid JSON");
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed) || parsed instanceof RawNumberToken) {
+    throw new PriceDataError("shape", "Missing bitcoin quote");
+  }
+  const bitcoin = parsed.bitcoin;
+  if (typeof bitcoin !== "object" || bitcoin === null || Array.isArray(bitcoin) || bitcoin instanceof RawNumberToken) {
+    throw new PriceDataError("shape", "Missing bitcoin quote");
+  }
 
-  const usd = uniqueNumberToken(source, "usd");
-  const change = uniqueNumberToken(source, "usd_24h_change");
-  const updatedToken = uniqueNumberToken(source, "last_updated_at");
+  const usd = requiredNumberToken(bitcoin.usd, "usd");
+  const change = requiredNumberToken(bitcoin.usd_24h_change, "usd_24h_change");
+  const updatedToken = requiredNumberToken(bitcoin.last_updated_at, "last_updated_at");
   if (!/^[0-9]+$/.test(updatedToken)) throw new PriceDataError("shape", "Source timestamp must be integer seconds");
   const updatedSeconds = Number(updatedToken);
   if (!Number.isSafeInteger(updatedSeconds) || updatedSeconds <= 0) throw new PriceDataError("shape", "Invalid source timestamp");

@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/server/app.ts";
 import type { AppConfig } from "../src/server/config.ts";
 import { WorldRepository } from "../src/server/world/repository.ts";
+import { StoryWorker } from "../src/server/story/worker.ts";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi" });
 const repository = new WorldRepository(pool);
@@ -62,6 +63,29 @@ test("real fiat copy preserves precision, propagates over SSE, and closes throug
   await expect(page.locator("#announcement")).toHaveText("WELL. No more seed-oil specials. Badger is fine.");
   await page.screenshot({ path: "artifacts/story-fiat-cared-desktop.png", fullPage: true });
   await second.close();
+});
+
+test("a real story worker publishes through production-style app composition to browser SSE", async ({ page }) => {
+  const config: AppConfig = {
+    port: 3110, databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  };
+  const writer = new WorldRepository(pool);
+  let currentQuote = quote("0", new Date());
+  const worker = new StoryWorker(writer, config, { observe: async () => currentQuote });
+  demoApp = await buildApp(config, pool, { repository: writer, worker });
+  await demoApp.listen({ host: "127.0.0.1", port: 3110 });
+  await expect.poll(async () => (await writer.snapshot()).story.price.status).toBe("fresh");
+  const streamReady = page.waitForResponse((response) => response.url().includes("/api/stream") && response.status() === 200);
+  await page.goto("http://127.0.0.1:3110/");
+  await streamReady;
+  await expect(page.locator("#story-section")).toBeHidden();
+
+  currentQuote = quote("-6", new Date());
+  await worker.runOnce();
+  await expect(page.locator("#story-section")).toBeVisible();
+  await expect(page.locator("#story-title")).toHaveText("FIAT SNACK TRUCK");
 });
 
 test("real steak copy remains readable on mobile and uses dismissal, not care", async ({ page }) => {

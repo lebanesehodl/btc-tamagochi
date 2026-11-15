@@ -17,6 +17,46 @@ beforeAll(async () => {
 });
 afterAll(async () => { await pool.end(); });
 
+it("publishes a shared worker repository's committed mutation to a real SSE subscriber", async () => {
+  const repository = new WorldRepository(pool);
+  const session = await repository.ensureSession(crypto.createHash("sha256").update("sse-shared-worker").digest());
+  const before = await repository.snapshot();
+  const app = await buildApp({
+    port: 0, databaseUrl: "", blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  }, pool, { serveClient: false, repository });
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const port = (app.server.address() as AddressInfo).port;
+    const response = await fetch(`http://127.0.0.1:${port}/api/stream?after=${before.revision}`, { signal: AbortSignal.timeout(5000) });
+    reader = response.body!.getReader();
+    let text = new TextDecoder().decode((await reader.read()).value);
+    expect(text).toContain(": connected");
+    await repository.applyAction(session, crypto.randomUUID(), { kind: "play" });
+    while (!text.includes("event: world")) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      text += new TextDecoder().decode(chunk.value, { stream: true });
+    }
+    expect(text).toContain("event: world");
+    const line = text.split("\n").find((item) => item.startsWith("data: "));
+    expect(line).toBeDefined();
+    expect(JSON.parse(line!.slice(6)).pet.joy).toBe(before.pet.joy + 10);
+  } finally {
+    await reader?.cancel().catch(() => undefined);
+    await app.close();
+  }
+});
+
+it("rejects worker composition unless the app receives the same repository", async () => {
+  await expect(buildApp({
+    port: 0, databaseUrl: "", blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  }, pool, { serveClient: false, worker: { start() {}, async stop() {} } }))
+    .rejects.toThrow("shared WorldRepository");
+});
+
 it("returns a fresh snapshot over real SSE when requested history no longer exists", async () => {
   const writer = new WorldRepository(pool, 1);
   const session = await writer.ensureSession(crypto.createHash("sha256").update("sse-gap").digest());

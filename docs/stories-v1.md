@@ -14,11 +14,11 @@ Exactly one episode is globally active. Price wins if price and hash become elig
 
 ## Recovery and reconciliation
 
-The migration stores immutable `story-v1` activation and a live-chain boundary. Fresh worlds publish them in `story` after the uncredited hatch baseline is established. Bootstrap/catch-up transitions and multi-block recovery consume candidates rather than telling old stories. A normal single live tip extension can arm a new candidate; it matures only with itself plus two canonical descendants.
+The migration stores immutable `story-v1` activation and a live-chain boundary. Fresh worlds publish them in `story` after the uncredited hatch baseline is established. Bootstrap/catch-up transitions and multi-block recovery consume candidates rather than telling old stories. Mature candidates are consumed without opening an episode while the chain is degraded, and every return to `synced`—including a no-tip-change recovery—sets the boundary at that reconciled tip and consumes its pending candidates. A normal single live tip extension can arm a new candidate; it matures only with itself plus two canonical descendants.
 
 Disconnecting a pending causal block removes it. Disconnecting the cause of an active glare episode closes only that episode with `reorg`; unrelated play, meals, decorations, and price stories are preserved. Consumed candidates and completed/cared/closed episodes do not reopen on canonical replay. Existing block-meal reorg rollback is unchanged.
 
-Missing/stale/failed price data creates no episode and requires a new baseline. The first fresh quote after startup, an invalid poll, a source conflict, or an observation gap establishes continuity without firing. A later entry from a genuinely different zone can fire.
+Missing/stale/failed price data creates no episode and requires a new baseline. Every newly constructed worker suppresses a candidate on its first fresh quote, even if a prior process left persisted continuity. The first fresh quote after that process start, an invalid poll, a source conflict, or an observation gap establishes continuity without firing. A later entry from a genuinely different zone can fire.
 
 ## Timing and actions
 
@@ -36,7 +36,7 @@ Fixed endpoint:
 https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true
 ```
 
-The client requires HTTP 200, a maximum 16 KiB response, positive bounded USD price, a finite original-decimal change strictly greater than −100, and integer Unix-seconds provenance. Limits are source age ≤300 seconds, future skew ≤30 seconds, receipt gap ≤600 seconds, five-second request deadline, no redirects, ordinary certificate/hostname verification, and no silent provider substitution.
+The client requires HTTP 200, a maximum 16 KiB response, strict JSON with no duplicate keys, positive bounded USD price, a finite original-decimal change strictly greater than −100, and integer Unix-seconds provenance. All three numeric tokens must belong to the actual `bitcoin` object; unrelated assets and duplicate null/value tricks cannot supply them. Limits are source age ≤300 seconds, future skew ≤30 seconds, receipt gap ≤600 seconds, five-second request deadline, no redirects, ordinary certificate/hostname verification, and no silent provider substitution.
 
 A successful unit fixture is not evidence of production health. Before merge or deployment, reviewers must run the read-only command at the current head and inspect its result:
 
@@ -55,6 +55,6 @@ The footer states: “Badger is a cartoon. Nothing here is health advice or fina
 
 ## Verification scope
 
-`npm run check` covers TypeScript, exact decimal boundaries, quote validation, PostgreSQL persistence, per-family caps, busy/cooldown behavior, concurrent evaluation, hash maturity/collisions/reorgs, catch-up suppression, expiry, idempotent care, and the production build. `npm run test:e2e` exercises real browser rendering, desktop/mobile screenshots, actual SSE delivery to a second visitor, family-specific free care and expiry announcements, dismissal, and demo-disabled/enabled behavior.
+`npm run check` covers TypeScript, exact decimal boundaries, hostile quote validation, PostgreSQL persistence, per-family caps, busy/cooldown behavior, concurrent evaluation, hash maturity/collisions/reorgs, degraded/outage/no-op-recovery suppression, price-worker restart baselining, shared-repository live SSE composition, expiry, idempotent care, and the production build. `npm run test:e2e` exercises real browser rendering, desktop/mobile screenshots, actual SSE delivery to a second visitor, family-specific free care and expiry announcements, dismissal, and demo-disabled/enabled behavior.
 
 Host tests do **not** prove live provider freshness/quota, a public URL, or watch hardware behavior. There are no display, power, haptics, sensor, or real-timing claims requiring a wrist test because this slice is web-only.

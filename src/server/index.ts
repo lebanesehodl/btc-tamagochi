@@ -18,7 +18,7 @@ const worker: WorkerLike = {
   async start() { await Promise.all(workers.map((worker) => worker.start())); },
   async stop() { await Promise.all(workers.map((worker) => worker.stop())); },
 };
-const app = await buildApp(config, pool, { worker });
+const app = await buildApp(config, pool, { worker, repository });
 
 await app.listen({ host: "0.0.0.0", port: config.port });
 console.log(`BTC Tamagochi listening on 0.0.0.0:${config.port}`);

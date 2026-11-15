@@ -80,6 +80,8 @@ interface EpisodeDatabaseRow {
 interface StoryInput {
   /** undefined evaluates existing state; null records a failed/invalid price poll and rebases. */
   price?: PriceObservation | null | undefined;
+  /** A newly constructed price worker rebaselines on its first fresh observation. */
+  rebaselinePrice?: boolean;
   /** Test seam. Production obtains one timestamp from PostgreSQL inside the transaction. */
   now?: Date;
 }
@@ -232,7 +234,7 @@ export class WorldRepository {
         );
         if (current.rowCount !== 1) throw new HttpError(409, "Block-worker lease is stale");
       }
-      const locked = await client.query("SELECT world_revision, chain_height, chain_hash, hatched_height FROM world_state FOR UPDATE");
+      const locked = await client.query("SELECT world_revision, chain_height, chain_hash, hatched_height, sync_status FROM world_state FOR UPDATE");
       const before = locked.rows[0];
       const storyLocked = await client.query("SELECT activation_height FROM story_state WHERE singleton = true FOR UPDATE");
       let activationHeight = numberField(storyLocked.rows[0]?.activation_height ?? null);
@@ -306,7 +308,7 @@ export class WorldRepository {
           if (restored.rowCount !== 1) throw new HttpError(409, "Block was already processed or conflicts with journal history");
         }
         if (active && activationHeight !== null && block.height >= activationHeight && selectsHashMischief(block.id)) {
-          const pending = transition.storyLive === true;
+          const pending = transition.storyLive === true && before.sync_status === "synced";
           await client.query(
             `INSERT INTO story_hash_candidates(story_version, block_hash, height, status, created_at, consumed_at)
              VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(story_version, block_hash) DO NOTHING`,
@@ -318,7 +320,7 @@ export class WorldRepository {
       }
 
       if (currentHash === null) throw new HttpError(409, "Transition exceeds the retained safe baseline");
-      if (transition.storyLive !== true) {
+      if (transition.storyLive !== true || before.sync_status !== "synced") {
         await client.query(
           "UPDATE story_state SET live_boundary_height = $1 WHERE singleton = true",
           [currentHeight],
@@ -371,6 +373,17 @@ export class WorldRepository {
       const locked = await client.query("SELECT world_revision, sync_status, last_error FROM world_state FOR UPDATE");
       const before = locked.rows[0];
       const changed = before.sync_status !== status || before.last_error !== lastError;
+      const recovering = status === "synced" && before.sync_status !== "synced";
+      if (recovering) {
+        // Even a no-op reconciliation after an outage establishes a new live boundary.
+        await client.query(
+          "UPDATE story_state SET live_boundary_height = (SELECT chain_height FROM world_state) WHERE singleton = true",
+        );
+        await client.query(
+          "UPDATE story_hash_candidates SET status = 'consumed', consumed_at = $1 WHERE status = 'pending' AND height <= (SELECT chain_height FROM world_state)",
+          [observedAt],
+        );
+      }
       await client.query(
         `UPDATE world_state SET sync_status = $1, last_error = $2, observed_at = $3, world_revision = world_revision + $4::int`,
         [status, lastError, observedAt, changed ? 1 : 0],
@@ -528,7 +541,7 @@ export class WorldRepository {
     let changed = false;
     try {
       await client.query("BEGIN");
-      const world = await client.query("SELECT world_revision, chain_height FROM world_state FOR UPDATE");
+      const world = await client.query("SELECT world_revision, chain_height, sync_status FROM world_state FOR UPDATE");
       const beforeRevision = Number(world.rows[0]?.world_revision);
       const story = await client.query("SELECT * FROM story_state WHERE singleton = true FOR UPDATE");
       const previous = story.rows[0];
@@ -579,7 +592,7 @@ export class WorldRepository {
             await clearPrice();
           } else {
             const zone = priceZone(observation.change);
-            const needsBaseline = previous.price_zone === "baseline-required" || gap || clockReversed;
+            const needsBaseline = input.rebaselinePrice === true || previous.price_zone === "baseline-required" || gap || clockReversed;
             if (!needsBaseline && !duplicate && zone !== previous.price_zone) {
               if (zone === "down") priceCandidate = { family: "price-down", cause: {
                 kind: "price", change: observation.change, usd: observation.usd, source: "CoinGecko",
@@ -632,6 +645,7 @@ export class WorldRepository {
         if (priceCandidate && await available(priceCandidate.family)) selected = priceCandidate;
         if (!selected) {
           for (const candidate of mature.rows) {
+            if (world.rows[0]?.sync_status !== "synced") break;
             if (await available("hash-mischief")) {
               selected = { family: "hash-mischief", cause: {
                 kind: "hash", blockHash: candidate.block_hash, height: Number(candidate.height), storyVersion: STORY_RULE_VERSION,

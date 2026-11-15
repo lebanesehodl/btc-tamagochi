@@ -6,6 +6,8 @@ import { WorldRepository } from "../src/server/world/repository.ts";
 import { selectsHashMischief } from "../src/server/story/selector.ts";
 import type { PriceObservation } from "../src/server/story/coingecko.ts";
 import type { ActionRequest, AppliedBlock } from "../src/shared/world.ts";
+import { StoryWorker } from "../src/server/story/worker.ts";
+import type { AppConfig } from "../src/server/config.ts";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi" });
 const repository = new WorldRepository(pool);
@@ -135,6 +137,25 @@ describe("price zone continuity and episodes", () => {
     expect(new Set(results.map((result) => result.revision)).size).toBe(4);
   });
 
+  it("rebaselines a newly constructed price worker before allowing a later zone entry", async () => {
+    await repository.evaluateStory({ price: quote("0", at(0)), now: at(0) });
+    const config: AppConfig = {
+      port: 3000, databaseUrl: "", blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+      moderatorToken: null, production: false, disableBlockWorker: true,
+    };
+    let observed = quote("-6", new Date());
+    const restarted = new StoryWorker(repository, config, { observe: async () => observed });
+    await restarted.runOnce();
+    expect((await repository.snapshot()).story.episode).toBeNull();
+    expect((await pool.query("SELECT price_zone FROM story_state")).rows[0].price_zone).toBe("down");
+
+    observed = quote("0", new Date());
+    await restarted.runOnce();
+    observed = quote("-6", new Date());
+    await restarted.runOnce();
+    expect((await repository.snapshot()).story.episode?.family).toBe("price-down");
+  });
+
   it("closes at ten minutes idempotently without permanent harm", async () => {
     await repository.evaluateStory({ price: quote("0", at(0)), now: at(0) });
     await repository.evaluateStory({ price: quote("-6", at(1)), now: at(1) });
@@ -193,6 +214,25 @@ describe("hash candidates and authoritative collisions", () => {
     expect((await repository.snapshot()).story.episode).toBeNull();
     expect((await pool.query("SELECT count(*)::int AS n FROM story_episodes WHERE trigger_family = 'hash-mischief'")).rows[0].n).toBe(1);
   }, 20_000);
+
+  it("consumes mature hashes during an outage and suppresses pending candidates on no-op recovery", async () => {
+    await matureSelectedChain();
+    const current = (await repository.knownActiveChain()).at(-1)!;
+    await apply([block(104, current.id, true)], true);
+    await repository.markDegraded("fixture outage");
+    const during = await repository.evaluateStory({ now: at(0) });
+    expect(during.chain.syncStatus).toBe("degraded");
+    expect(during.story.episode).toBeNull();
+    expect((await pool.query("SELECT status FROM story_hash_candidates WHERE height = 101")).rows[0].status).toBe("consumed");
+    expect((await pool.query("SELECT status FROM story_hash_candidates WHERE height = 104")).rows[0].status).toBe("pending");
+
+    await repository.markHealthy();
+    const recovered = await repository.evaluateStory({ now: at(1) });
+    expect(recovered.chain.syncStatus).toBe("synced");
+    expect(recovered.story.episode).toBeNull();
+    expect((await pool.query("SELECT count(*)::int AS n FROM story_hash_candidates WHERE status <> 'consumed'")).rows[0].n).toBe(0);
+    expect(Number((await pool.query("SELECT live_boundary_height FROM story_state")).rows[0].live_boundary_height)).toBe(104);
+  });
 
   it("suppresses catch-up/history rather than replaying old story events", async () => {
     const b101 = block(101, "f".repeat(64), true);

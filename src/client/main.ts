@@ -35,7 +35,7 @@ const STORY_COPY = {
     status: "GLARED. Free care is open.",
     action: "Free care — dim the lights", doctor: "Dr. Lumen says: go outside.",
     recover: "WELL. The room is a better color.",
-    expire: "Badger looks away. The room is a better color.",
+    expire: "The screen went dark. Badger carries on.",
   },
 } as const;
 
