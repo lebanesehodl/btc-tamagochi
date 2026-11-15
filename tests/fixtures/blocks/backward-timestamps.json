@@ -1,0 +1,32 @@
+[
+  {
+    "id": "00000000000000000000fa59a3ba9fcb5f3e26319304442c374bb953c8b9f93f",
+    "height": 975858,
+    "version": 536870912,
+    "timestamp": 1794699585,
+    "tx_count": 3232,
+    "size": 1781694,
+    "weight": 3993423,
+    "merkle_root": "d9ad160995f477511f5ffeec34e82fe61003966a63508ca413bce7a77cc92fbe",
+    "previousblockhash": "00000000000000000000b4a0ca1bd38571ae7c7133da78d1742e5d7a2fc1d3df",
+    "mediantime": 1794695109,
+    "nonce": 1071622542,
+    "bits": 386012787,
+    "difficulty": 134823837323272.66
+  },
+  {
+    "id": "00000000000000000000bc788faec10435219c4ab79b205fbbe20dd29d053310",
+    "height": 975859,
+    "version": 1073733632,
+    "timestamp": 1794699426,
+    "tx_count": 1102,
+    "size": 1006256,
+    "weight": 3994298,
+    "merkle_root": "811ed80181f9d3c58bc5a1527141c1456d0b5ef37c2c55c3b628a2e2c53b1d44",
+    "previousblockhash": "00000000000000000000fa59a3ba9fcb5f3e26319304442c374bb953c8b9f93f",
+    "mediantime": 1794695113,
+    "nonce": 255187057,
+    "bits": 386012787,
+    "difficulty": 134823837323272.66
+  }
+]

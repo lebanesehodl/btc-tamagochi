@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" shape-rendering="crispEdges">
+  <!-- Original pixel illustration: stocky honey-badger silhouette with its light back stripe. -->
+  <g fill="#1c1b19"><path d="M24 36h12V24h16v6h56v-6h16v12h12v44h-12v12h-16v12h-16V92H60v12H44V92H28V80H16V52h8z"/><path d="M24 92h12v16H20v-8h4zM108 92h12v16h-16v-8h4z"/></g>
+  <path fill="#f2e6cd" d="M36 30h16V18h56v12h16v18H124v6H36V42H24V36h12z"/>
+  <path fill="#c8bda6" d="M44 42h72v12H44zM36 54h12v18H36zM116 54h12v18h-12z"/>
+  <path fill="#77736a" d="M24 52h12v24H24zM124 52h12v24h-12zM48 54h64v18H48z"/>
+  <path fill="#343330" d="M16 56h20v24H16zM124 56h20v24h-12zM36 72h88v20H36zM48 92h16v8H48zM96 92h16v8H96z"/>
+  <path fill="#17130f" d="M48 48h12v12H48zM100 48h12v12h-12zM68 66h24v12H68z"/>
+  <path fill="#f7931a" d="M52 52h4v4h-4zM104 52h4v4h-4z"/>
+  <path fill="#f2e6cd" d="M76 68h8v4h-8zM60 76h12v4H60zM88 76h12v4H88z"/>
+  <path fill="#1c1b19" d="M12 48h12v16H12zM8 52h8v8H8z"/>
+</svg>
