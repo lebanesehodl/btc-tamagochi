@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { Pool } from "pg";
 import type { AppliedBlock } from "../src/shared/world.ts";
 import { WorldRepository } from "../src/server/world/repository.ts";
@@ -234,6 +234,94 @@ test("a stale visitor conflict gets friendly copy and a refreshed locked-slot ex
   } finally {
     await first.close();
     await stale.close();
+    await app.close();
+  }
+});
+
+async function observeNativeSse(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const tracked = window as typeof window & { __sse: EventSource; __sseOpens: number };
+    tracked.__sseOpens = 0;
+    const NativeEventSource = window.EventSource;
+    window.EventSource = class extends NativeEventSource {
+      constructor(url: string | URL, configuration?: EventSourceInit) {
+        super(url, configuration);
+        tracked.__sse = this;
+        this.addEventListener("open", () => { tracked.__sseOpens += 1; });
+      }
+    };
+  });
+}
+
+function sseOpenCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window as typeof window & { __sseOpens: number }).__sseOpens);
+}
+
+async function expectCurrentOccupiedDen(page: Page): Promise<void> {
+  await expect(page.locator("#connection-label")).toHaveText("Meals are paused. Play and decorating still work.");
+  await expect(page.locator("#connection")).toHaveClass("connection paused");
+  await expect(page.locator("#den-wall")).toHaveClass(/badger-poster/);
+  await expect(page.locator("#slot-state-wall")).toHaveText("This spot is taken. Pick another.");
+  await expect(page.locator('[data-slot="wall"] [data-item="genesis-poster"]')).toBeDisabled();
+  await expect(page.locator('[data-slot="wall"] [data-item="badger-poster"]')).toBeDisabled();
+}
+
+test("delayed HTTP and stale SSE cannot regress an occupied den, including after reconnect", async ({ page }) => {
+  const app = await buildApp({
+    port: 3107,
+    databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  }, pool, { repository });
+  let holdOnce = true;
+  let heldRevision: number | null = null;
+  let heldResolve!: () => void;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { heldResolve = resolve; });
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  app.addHook("onSend", async (request, _reply, payload) => {
+    if (holdOnce && request.method === "POST" && request.url === "/api/actions") {
+      holdOnce = false;
+      heldRevision = JSON.parse(String(payload)).snapshot.revision;
+      heldResolve();
+      await released;
+    }
+    return payload;
+  });
+  try {
+    await observeNativeSse(page);
+    await app.listen({ host: "127.0.0.1", port: 3107 });
+    await page.goto("http://127.0.0.1:3107/");
+    const playClick = page.getByRole("button", { name: /Play with Satoshi/ }).click();
+    await held; // the HTTP response contains revision 4, but has not reached the browser
+    expect(heldRevision).toBe(4);
+    const other = await repository.ensureSession(Buffer.from(digest("delayed-http-other"), "hex"));
+    await repository.applyAction(other, crypto.randomUUID(), { kind: "decorate", slot: "wall", itemId: "badger-poster", expectedVersion: 0 });
+    await repository.markDegraded("Independent ordering fixture source pause", "paused");
+    await expectCurrentOccupiedDen(page);
+
+    release();
+    await playClick;
+    await expectCurrentOccupiedDen(page);
+
+    const stale = await pool.query("SELECT payload FROM world_events WHERE revision = 5");
+    expect(stale.rows).toHaveLength(1);
+    // Deliver a real historical payload through the captured native stream listener after revision 6.
+    await page.evaluate((payload) => {
+      const tracked = window as typeof window & { __sse: EventSource };
+      tracked.__sse.dispatchEvent(new MessageEvent("world", { data: JSON.stringify(payload) }));
+    }, stale.rows[0].payload);
+    await expectCurrentOccupiedDen(page);
+    await page.screenshot({ path: "artifacts/stale-snapshot-ordering.png", fullPage: true });
+
+    const opensBeforeDisconnect = await sseOpenCount(page);
+    const reconnect = page.waitForRequest((request) => request.url().includes("/api/stream?after="), { timeout: 15_000 });
+    app.server.closeAllConnections();
+    await reconnect;
+    await expect.poll(() => sseOpenCount(page)).toBeGreaterThan(opensBeforeDisconnect);
+    await expectCurrentOccupiedDen(page);
+  } finally {
+    release();
     await app.close();
   }
 });

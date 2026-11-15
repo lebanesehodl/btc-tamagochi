@@ -136,7 +136,8 @@ export class WorldRepository {
 
   async knownActiveChain(): Promise<Array<{ id: string; height: number; previousblockhash: string | null; timestamp: number }>> {
     const result = await this.pool.query(
-      "SELECT block_hash AS id, height, parent_hash AS previousblockhash, block_timestamp AS timestamp FROM block_journal WHERE active OR block_hash = (SELECT chain_hash FROM world_state) ORDER BY height ASC",
+      // Keep the original uncredited hatch as reorg context after later blocks become active.
+      "SELECT block_hash AS id, height, parent_hash AS previousblockhash, block_timestamp AS timestamp FROM block_journal WHERE active OR block_hash = (SELECT chain_hash FROM world_state) OR height = (SELECT hatched_height FROM world_state WHERE singleton = true) ORDER BY height ASC",
     );
     return result.rows.map((row) => ({
       id: row.id,

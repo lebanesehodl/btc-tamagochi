@@ -31,11 +31,10 @@ function renderConnectionStatus(syncStatus: WorldSnapshot["chain"]["syncStatus"]
 }
 
 function render(next: WorldSnapshot): void {
+  if (world !== null && next.revision <= world.revision) return;
   const isNewMeal = next.pet.lastMeal && next.pet.lastMeal.blockHash !== previousMeal;
   const evolved = world?.pet.stage === "cub" && next.pet.stage === "rowdy";
-  const wasBehind = world !== null && next.revision <= world.revision;
   world = next;
-  if (wasBehind) return;
   previousMeal = next.pet.lastMeal?.blockHash ?? null;
 
   byId("block-height").textContent = next.chain.height === null ? "—" : `#${next.chain.height.toLocaleString()}`;
