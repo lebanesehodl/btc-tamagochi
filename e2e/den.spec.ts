@@ -99,6 +99,30 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await second.close();
 });
 
+test("a failed SSE connection falls back to world refreshes", async ({ browser }) => {
+  const first = await browser.newContext();
+  const second = await browser.newContext();
+  const a = await first.newPage();
+  const b = await second.newPage();
+  const errors: string[] = [];
+  b.on("pageerror", (error) => errors.push(error.message));
+  await b.route("**/api/stream**", (route) => route.abort("failed"));
+  await Promise.all([a.goto("/"), b.goto("/")]);
+  await expect(b.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+  await a.getByRole("button", { name: /Play with Satoshi/ }).click();
+  await expect(b.locator("#joy-label")).toHaveText("JOY 50/100");
+  await expect(b.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+  await b.getByRole("button", { name: /Play with Satoshi/ }).click();
+  await expect(a.locator("#joy-label")).toHaveText("JOY 60/100");
+  await expect(b.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+  await b.setViewportSize({ width: 390, height: 844 });
+  await b.screenshot({ path: "artifacts/sse-refresh-fallback-mobile.png", fullPage: true });
+  expect(await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+  await first.close();
+  await second.close();
+});
+
 test("paused, degraded, and catching-up status survive actual SSE open and reconnect", async ({ page }) => {
   await page.addInitScript(() => {
     const tracked = window as typeof window & { __sseOpens: number };

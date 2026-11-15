@@ -4,6 +4,8 @@ import type { StoryEpisodeView, TriggerFamily } from "../shared/story.ts";
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 let world: WorldSnapshot | null = null;
 let stream: EventSource | null = null;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let streamUnavailable = false;
 let actionBusy = false;
 let previousMeal: string | null = null;
 let announceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -106,6 +108,10 @@ function announceStoryExpiry(episode: StoryEpisodeView): void {
 }
 
 function renderConnectionStatus(syncStatus: WorldSnapshot["chain"]["syncStatus"]): void {
+  if (streamUnavailable && stream?.readyState !== EventSource.OPEN) {
+    renderStreamUnavailable();
+    return;
+  }
   byId("connection").className = `connection ${syncStatus}`;
   byId("connection-label").textContent = {
     starting: "Connecting to the den…",
@@ -182,6 +188,19 @@ function render(next: WorldSnapshot): void {
   if (newStory && next.story.episode) announce(`${STORY_COPY[next.story.episode.family].title}. ${next.story.episode.demo ? "Simulated for this demo." : "A new den story is open."}`);
 }
 
+function renderStreamUnavailable(): void {
+  byId("connection").className = "connection degraded";
+  byId("connection-label").textContent = "Live link unavailable. Refreshing the den.";
+}
+
+function scheduleWorldRefresh(delayMs = 3000): void {
+  if (refreshTimer !== null) return;
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    void refresh();
+  }, delayMs);
+}
+
 async function refresh(): Promise<void> {
   try {
     const response = await fetch("/api/world", { cache: "no-store" });
@@ -190,11 +209,15 @@ async function refresh(): Promise<void> {
     const shouldOpen = stream === null || stream.readyState === EventSource.CLOSED;
     render(snapshot);
     if (shouldOpen) openStream(snapshot.revision);
+    if (streamUnavailable && stream?.readyState !== EventSource.OPEN) {
+      renderStreamUnavailable();
+      scheduleWorldRefresh();
+    }
   } catch {
     byId("connection").className = "connection degraded";
     byId("connection-label").textContent = "Cannot reach the den—retrying";
     byId("announcement").textContent = "The den could not be reached. Trying again.";
-    setTimeout(refresh, 5000);
+    scheduleWorldRefresh(5000);
   }
 }
 
@@ -210,10 +233,14 @@ function openStream(after: number): void {
     render(snapshot);
   });
   stream.onerror = () => {
-    byId("connection").className = "connection degraded";
-    byId("connection-label").textContent = "Lost the live link. Reconnecting.";
+    streamUnavailable = true;
+    renderStreamUnavailable();
+    scheduleWorldRefresh();
   };
   stream.onopen = () => {
+    streamUnavailable = false;
+    if (refreshTimer !== null) clearTimeout(refreshTimer);
+    refreshTimer = null;
     if (world) renderConnectionStatus(world.chain.syncStatus);
   };
 }
