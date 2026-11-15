@@ -8,6 +8,7 @@ let actionBusy = false;
 let previousMeal: string | null = null;
 let announceTimer: ReturnType<typeof setTimeout> | null = null;
 let storyExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+let announcedStoryExpiry: string | null = null;
 
 const STORY_COPY = {
   "price-down": {
@@ -16,6 +17,8 @@ const STORY_COPY = {
     mood: "Everything tastes beige. Badger regrets the seed oil.",
     status: "FIAT SICK. Seed-oil special. Free care is open.",
     action: "Free care — go outside", doctor: "Dr. Lumen says: read the label. Then go outside.",
+    recover: "WELL. No more seed-oil specials. Badger is fine.",
+    expire: "The oil wore off. Badger carries on.",
   },
   "price-up": {
     state: "FED WELL", title: "STEAK TRUCK", sub: "Light-water special.",
@@ -23,6 +26,7 @@ const STORY_COPY = {
     mood: "Badger drank the fancy water. Badger feels very good.",
     status: "FED WELL. Nothing to fix.",
     action: "Dismiss celebration", doctor: "Dr. Lumen says: the water is lighter. He did not say why.",
+    expire: "The bottle is empty. The plate is empty. Badger is content.",
   },
   "hash-mischief": {
     state: "GLARED", title: "A DELIVERY", sub: "",
@@ -30,6 +34,8 @@ const STORY_COPY = {
     mood: "Badger squints at everything.",
     status: "GLARED. Free care is open.",
     action: "Free care — dim the lights", doctor: "Dr. Lumen says: go outside.",
+    recover: "WELL. The room is a better color.",
+    expire: "Badger looks away. The room is a better color.",
   },
 } as const;
 
@@ -71,7 +77,13 @@ function renderStory(next: WorldSnapshot): void {
   byId("story-action").textContent = copy.action;
   byId("story-doctor").textContent = copy.doctor;
   byId("story-expiry").textContent = `Automatic close at ${utcTime(episode.expiresAt)}.`;
-  storyExpiryTimer = setTimeout(() => { void refresh(); }, Math.max(1000, Date.parse(episode.expiresAt) - Date.now() + 1000));
+  storyExpiryTimer = setTimeout(() => {
+    if (world?.story.episode?.id === episode.id) {
+      announceStoryExpiry(episode);
+      renderStory(world);
+    }
+    void refresh();
+  }, Math.max(1000, Date.parse(episode.expiresAt) - Date.now() + 1000));
   updateButtons();
 }
 
@@ -85,6 +97,12 @@ function announce(message: string): void {
   element.classList.add("highlight");
   if (announceTimer) clearTimeout(announceTimer);
   announceTimer = setTimeout(() => element.classList.remove("highlight"), 1800);
+}
+
+function announceStoryExpiry(episode: StoryEpisodeView): void {
+  if (announcedStoryExpiry === episode.id) return;
+  announcedStoryExpiry = episode.id;
+  announce(STORY_COPY[episode.family].expire);
 }
 
 function renderConnectionStatus(syncStatus: WorldSnapshot["chain"]["syncStatus"]): void {
@@ -102,9 +120,11 @@ function render(next: WorldSnapshot): void {
   if (world !== null && next.revision <= world.revision) return;
   const isNewMeal = next.pet.lastMeal && next.pet.lastMeal.blockHash !== previousMeal;
   const evolved = world?.pet.stage === "cub" && next.pet.stage === "rowdy";
-  const previousEpisode = world?.story.episode?.id;
+  const previousEpisode = world?.story.episode ?? null;
   const nextEpisode = next.story.episode?.id;
-  const newStory = nextEpisode !== undefined && nextEpisode !== previousEpisode;
+  const newStory = nextEpisode !== undefined && nextEpisode !== previousEpisode?.id;
+  const expiredStory = previousEpisode !== null && nextEpisode === undefined
+    && Date.parse(previousEpisode.expiresAt) <= Date.now();
   world = next;
   previousMeal = next.pet.lastMeal?.blockHash ?? null;
 
@@ -158,6 +178,7 @@ function render(next: WorldSnapshot): void {
     setTimeout(() => byId("badger").classList.remove("eating"), 1600);
   }
   renderStory(next);
+  if (expiredStory && previousEpisode) announceStoryExpiry(previousEpisode);
   if (newStory && next.story.episode) announce(`${STORY_COPY[next.story.episode.family].title}. ${next.story.episode.demo ? "Simulated for this demo." : "A new den story is open."}`);
 }
 
@@ -208,6 +229,7 @@ function friendlyActionError(status: number, code: unknown): string {
 
 async function act(action: ActionRequest): Promise<void> {
   if (actionBusy) return;
+  const storyFamily = action.kind === "story-care" ? world?.story.episode?.family : null;
   actionBusy = true;
   byId("action-error").textContent = "";
   document.querySelectorAll("button").forEach((button) => { (button as HTMLButtonElement).disabled = true; });
@@ -225,7 +247,8 @@ async function act(action: ActionRequest): Promise<void> {
     }
     render(result.snapshot as WorldSnapshot);
     if (action.kind === "play") announce("Badger joy increased. That was definitely your doing.");
-    else if (action.kind === "story-care") announce("WELL. Free care did it. Badger carries on.");
+    else if (action.kind === "story-care" && storyFamily === "price-down") announce(STORY_COPY["price-down"].recover);
+    else if (action.kind === "story-care" && storyFamily === "hash-mischief") announce(STORY_COPY["hash-mischief"].recover);
     else if (action.kind === "story-dismiss") announce("The bottle is empty. The plate is empty. Badger is content.");
     else if (action.kind === "story-demo") announce("Demo story opened. No live quote or block caused it.");
     else if (action.kind === "decorate") {

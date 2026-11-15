@@ -22,7 +22,7 @@ Missing/stale/failed price data creates no episode and requires a new baseline. 
 
 ## Timing and actions
 
-Episodes auto-close after 600 seconds in the evaluator. Negative episodes also accept `story-care`; celebrations accept `story-dismiss`. Both use the existing server-authoritative, session-scoped, idempotent `/api/actions` path and the same-origin/rate limits. Demo actions are separate and are rejected unless `STORY_DEMO=true`.
+Episodes auto-close after 600 seconds in the evaluator. The client hides an expired card and announces the approved family-specific closing line. Negative episodes also accept `story-care`; celebrations accept `story-dismiss`. Both use the existing server-authoritative, session-scoped, idempotent `/api/actions` path and the same-origin/rate limits. Demo actions are separate and are rejected unless `STORY_DEMO=true`.
 
 The story worker ticks every 60 seconds and fetches price at most every five minutes. Network fetching completes before the database transaction. A transaction locks the world and story state, consumes inputs atomically, updates snapshots/events/revisions together, and commits before listeners publish. Demo replacement is explicit and is never a production preemption rule.
 
@@ -49,12 +49,12 @@ It changes no world state. Passing confirms one current response meets freshness
 
 ## Copy
 
-The implementation uses the approved v4.1 primary lines for fiat snacks, seed oil, steak, fancy water, glare, free care, and the celebration. **Dr. Lumen** is the fictional original character. Dr. Jack Kruse draft lines are not shipped and no endorsement or participation is implied.
+The implementation uses the approved v4.1 primary lines for fiat snacks, seed oil, steak, fancy water, glare, family-specific free care/expiry, and the celebration. **Dr. Lumen** is the fictional original character. Dr. Jack Kruse draft lines are not shipped and no endorsement or participation is implied.
 
 The footer states: “Badger is a cartoon. Nothing here is health advice or financial advice.” Numbers, UTC timestamps, sources, and block hashes are factual UI data. Fiction is not a nutrition, blue-light, medical, or financial claim.
 
 ## Verification scope
 
-`npm run check` covers TypeScript, exact decimal boundaries, quote validation, PostgreSQL persistence, per-family caps, busy/cooldown behavior, concurrent evaluation, hash maturity/collisions/reorgs, catch-up suppression, expiry, idempotent care, and the production build. `npm run test:e2e` exercises real browser rendering, desktop/mobile screenshots, actual SSE delivery to a second visitor, free care, dismissal, and demo-disabled/enabled behavior.
+`npm run check` covers TypeScript, exact decimal boundaries, quote validation, PostgreSQL persistence, per-family caps, busy/cooldown behavior, concurrent evaluation, hash maturity/collisions/reorgs, catch-up suppression, expiry, idempotent care, and the production build. `npm run test:e2e` exercises real browser rendering, desktop/mobile screenshots, actual SSE delivery to a second visitor, family-specific free care and expiry announcements, dismissal, and demo-disabled/enabled behavior.
 
 Host tests do **not** prove live provider freshness/quota, a public URL, or watch hardware behavior. There are no display, power, haptics, sensor, or real-timing claims requiring a wrist test because this slice is web-only.

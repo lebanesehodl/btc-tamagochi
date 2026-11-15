@@ -14,7 +14,7 @@ The page is character-led: Satoshi and the shared den take priority over block t
 - Anyone can play or choose curated den items. No login is needed; an anonymous HttpOnly cookie carries a long opaque session token. This is not proof of unique humanity.
 - All visitors share authoritative PostgreSQL state. Committed changes arrive over Server-Sent Events.
 - Reorgs undo only displaced block meals. Play and decorations remain intact. Provider-reported data is not independently consensus-verified.
-- Optional den stories add temporary seed-oil sickness after fresh CoinGecko BTC/USD falls strictly beyond −5%, steak and deuterium-depleted water when it rises strictly beyond +5%, and occasional hash-selected glare after three confirmations. One story is active globally, each real family has one delivery per UTC date, and free care or ten-minute expiry closes negative stories. Neither ordinary block meals nor inactive/offline pet safety changes. See `docs/stories-v1.md` for exact reconciliation and continuity rules.
+- Optional den stories add a cartoon badger’s seed-oil sickness after fresh CoinGecko BTC/USD falls strictly beyond −5%, steak and deuterium-depleted water when it rises strictly beyond +5%, and occasional hash-selected glare after three confirmations. One story is active globally, each real family has one delivery per UTC date, and free care or ten-minute expiry closes negative stories. Neither ordinary block meals nor inactive/offline pet safety changes. See `docs/stories-v1.md` for exact reconciliation and continuity rules.
 
 ## Pixel character assets
 

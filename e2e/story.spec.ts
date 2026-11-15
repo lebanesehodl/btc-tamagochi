@@ -59,7 +59,7 @@ test("real fiat copy preserves precision, propagates over SSE, and closes throug
   await page.locator("#story-action").click();
   await expect(page.locator("#story-section")).toBeHidden();
   await expect(second.locator("#story-section")).toBeHidden();
-  await expect(page.locator("#announcement")).toHaveText("WELL. Free care did it. Badger carries on.");
+  await expect(page.locator("#announcement")).toHaveText("WELL. No more seed-oil specials. Badger is fine.");
   await page.screenshot({ path: "artifacts/story-fiat-cared-desktop.png", fullPage: true });
   await second.close();
 });
@@ -78,6 +78,37 @@ test("real steak copy remains readable on mobile and uses dismissal, not care", 
   await expect(page.locator("#story-section")).toBeHidden();
   await expect(page.locator("#announcement")).toContainText("Badger is content");
 
+});
+
+test("expiry uses the approved family-specific closing line", async ({ page }) => {
+  const config: AppConfig = {
+    port: 3110, databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true, disableStoryWorker: true,
+  };
+  demoApp = await buildApp(config, pool, { repository });
+  await demoApp.listen({ host: "127.0.0.1", port: 3110 });
+  await repository.evaluateStory({ price: quote("0", at(0)), now: at(0) });
+  await repository.evaluateStory({ price: quote("-6", at(1)), now: at(1) });
+  await pool.query("UPDATE story_episodes SET expires_at = $1 WHERE status = 'active'", [new Date(Date.now() + 2000)]);
+  await page.goto("http://127.0.0.1:3110/");
+  await expect(page.locator("#story-title")).toHaveText("FIAT SNACK TRUCK");
+  await expect(page.locator("#story-section")).toBeHidden();
+  await expect(page.locator("#announcement")).toHaveText("The oil wore off. Badger carries on.");
+});
+
+test("glare free care uses its approved recovery line", async ({ page }) => {
+  const config: AppConfig = {
+    port: 3110, databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true, disableStoryWorker: true, storyDemo: true,
+  };
+  demoApp = await buildApp(config, pool);
+  await demoApp.listen({ host: "127.0.0.1", port: 3110 });
+  await page.goto("http://127.0.0.1:3110/");
+  await page.locator('[data-demo-family="hash-mischief"]').click();
+  await page.locator("#story-action").click();
+  await expect(page.locator("#announcement")).toHaveText("WELL. The room is a better color.");
 });
 
 test("production demo actions are rejected; explicitly enabled demo scenes never claim live causes", async ({ page, request }) => {
