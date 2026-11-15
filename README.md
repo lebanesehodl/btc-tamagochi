@@ -40,7 +40,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run check` runs TypeScript, all PostgreSQL/unit tests, and the production build. `npm run test:e2e` rebuilds, starts an isolated local server with the block worker disabled, and exercises desktop, mobile, two separate browser visitors, live block feeding/evolution, decoration, stale-decoration conflicts, and actual SSE socket reconnect. Success screenshots are written to ignored `artifacts/` files; traces on failure go to `test-results/`. CI runs `npm run check` on Node 24 with PostgreSQL 16; browser tests require an explicit Chromium installation.
+`npm run check` runs TypeScript, all PostgreSQL/unit tests, and the production build. A real worker/reconciler/PostgreSQL regression covers the uncredited baseline, 11/12-block evolution boundary, duplicate polls, and reorg rollback/replay. `npm run test:e2e` rebuilds, starts an isolated local server with the block worker disabled, and exercises desktop, mobile, two separate browser visitors, live block feeding/evolution, decoration, stale-decoration conflicts, and actual SSE socket reconnect while preserving paused/degraded/catching-up status. Success screenshots are written to ignored `artifacts/` files; traces on failure go to `test-results/`. CI runs `npm run check` on Node 24 with PostgreSQL 16; browser tests require an explicit Chromium installation.
 
 The PostgreSQL tests reset the dedicated `btc_tamagochi` database. Do not point the tests at production data.
 

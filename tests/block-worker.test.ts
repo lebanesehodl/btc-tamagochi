@@ -41,6 +41,79 @@ beforeEach(async () => {
 });
 afterAll(async () => { await pool.end(); });
 
+it("evolves after twelve credited blocks from an uncredited baseline, deduplicates polls, and replays a reorg", async () => {
+  const source = new FakeSource();
+  const worker = new BlockWorker(repository, config, source);
+  await worker.runOnce();
+  let snapshot = await repository.snapshot();
+  expect(snapshot.pet).toMatchObject({ meals: 0, growthBlocks: 0, stage: "cub", hatchedAtHeight: 100, nextEvolutionAt: 112 });
+  expect(snapshot.pet.lastMeal).toBeNull();
+  expect((await pool.query("SELECT active FROM block_journal WHERE height = 100")).rows).toEqual([{ active: false }]);
+
+  await worker.runOnce();
+  const duplicateBaseline = await repository.snapshot();
+  expect(duplicateBaseline.pet).toEqual(snapshot.pet);
+  expect(duplicateBaseline.revision).toBe(snapshot.revision);
+
+  for (let height = 101; height <= 111; height += 1) source.blocks.set(height, block(height));
+  source.tip = 111;
+  await worker.runOnce();
+  snapshot = await repository.snapshot();
+  expect(snapshot.chain.height).toBe(111);
+  expect(snapshot.pet).toMatchObject({ meals: 11, growthBlocks: 11, stage: "cub", nextEvolutionAt: 112 });
+
+  await worker.runOnce();
+  const duplicateEleven = await repository.snapshot();
+  expect(duplicateEleven.pet).toEqual(snapshot.pet);
+  expect(duplicateEleven.revision).toBe(snapshot.revision);
+
+  source.blocks.set(112, block(112));
+  source.tip = 112;
+  await worker.runOnce();
+  snapshot = await repository.snapshot();
+  expect(snapshot.chain.height).toBe(112);
+  expect(snapshot.pet).toMatchObject({ meals: 12, growthBlocks: 12, stage: "rowdy", nextEvolutionAt: null });
+
+  const canonical112 = source.blocks.get(112)!;
+  source.blocks.set(112, block(112, "fork-112"));
+  await worker.runOnce();
+  const fork = await repository.snapshot();
+  expect(fork.chain.hash).toBe(source.blocks.get(112)!.id);
+  // Reorg changes the meal's block identity, not how many connected meals remain credited.
+  expect({ ...fork.pet, lastMeal: null }).toEqual({ ...snapshot.pet, lastMeal: null });
+  expect(fork.pet.lastMeal?.blockHash).toBe(fork.chain.hash);
+  expect((await pool.query("SELECT active FROM block_journal WHERE block_hash = $1", [canonical112.id])).rows).toEqual([{ active: false }]);
+
+  source.blocks.set(112, canonical112);
+  await worker.runOnce();
+  const replayed = await repository.snapshot();
+  expect(replayed.chain.hash).toBe(canonical112.id);
+  expect(replayed.pet).toEqual(snapshot.pet);
+  expect(replayed.pet.lastMeal?.blockHash).toBe(canonical112.id);
+  await worker.runOnce();
+  const duplicateReplay = await repository.snapshot();
+  expect(duplicateReplay.pet).toEqual(replayed.pet);
+  expect(duplicateReplay.revision).toBe(replayed.revision);
+
+  const meal = snapshot.pet.lastMeal;
+  if (!meal) throw new Error("Expected the twelfth block to have a credited meal");
+  const rolledBack = await repository.applyTransition({
+    disconnect: [canonical112.id], connect: [], observedAt: new Date().toISOString(), syncStatus: "synced",
+  });
+  expect(rolledBack.pet).toMatchObject({ meals: 11, growthBlocks: 11, stage: "cub", nextEvolutionAt: 112 });
+  const reconnected = await repository.applyTransition({
+    disconnect: [], connect: [{ block: canonical112, meal: {
+      foodId: meal.foodId, foodName: meal.foodName, reaction: meal.reaction, pantryVersion: meal.pantryVersion,
+    } }], observedAt: new Date().toISOString(), syncStatus: "synced",
+  });
+  expect(reconnected.pet).toEqual(snapshot.pet);
+  expect(reconnected.pet.lastMeal?.blockHash).toBe(canonical112.id);
+  await worker.runOnce();
+  const duplicateReconnected = await repository.snapshot();
+  expect(duplicateReconnected.pet).toEqual(reconnected.pet);
+  expect(duplicateReconnected.revision).toBe(reconnected.revision);
+});
+
 it("bootstraps without historical awards, catches up only new blocks, and preserves state through outages", async () => {
   const source = new FakeSource();
   const worker = new BlockWorker(repository, config, source);

@@ -64,7 +64,8 @@ function numberField(value: string | number | null): number | null {
 
 function snapshotFromRow(row: SnapshotRow): WorldSnapshot {
   const activeBlocks = Number(row.active_blocks);
-  const growthBlocks = Math.max(0, activeBlocks - 1);
+  // The uncredited bootstrap row is already excluded from this count.
+  const growthBlocks = activeBlocks;
   const hatchedAtHeight = numberField(row.hatched_height);
   const fullness = activeBlocks === 0 ? 0 : Math.min(100, 40 + activeBlocks * 20);
   const joy = row.joy;
@@ -210,8 +211,8 @@ export class WorldRepository {
         );
         if (inserted.rowCount !== 1) {
           const restored = await client.query(
-            `UPDATE block_journal SET active = $10, observed_at = $2
-             WHERE block_hash = $1 AND active = false AND height = $3 AND parent_hash IS NOT DISTINCT FROM $4
+            `UPDATE block_journal SET active = $10, observed_at = $1::timestamptz
+             WHERE block_hash = $2 AND active = false AND height = $3 AND parent_hash IS NOT DISTINCT FROM $4
                AND block_timestamp = $5 AND food_id = $6 AND food_name = $7 AND pantry_version = $8 AND reaction = $9`,
             [transition.observedAt, block.id, block.height, block.previousblockhash, block.timestamp, meal.foodId, meal.foodName, meal.pantryVersion, meal.reaction, active],
           );

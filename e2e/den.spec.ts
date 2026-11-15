@@ -30,7 +30,7 @@ test.beforeEach(async () => {
   await pool.query("DELETE FROM den_slots");
   await pool.query("UPDATE world_state SET world_revision = 1, chain_height = NULL, chain_hash = NULL, hatched_height = NULL, joy = 40, source = 'https://blockstream.info/api', sync_status = 'starting', last_error = NULL, observed_at = NULL");
   await pool.query("INSERT INTO den_slots(slot) VALUES ('wall'),('floor'),('corner')");
-  await repository.applyTransition({ disconnect: [], connect: [applied(100)], observedAt: new Date("2026-01-01T00:00:00Z").toISOString(), syncStatus: "synced" });
+  await repository.applyTransition({ disconnect: [], connect: [{ ...applied(100), active: false }], observedAt: new Date("2026-01-01T00:00:00Z").toISOString(), syncStatus: "synced" });
   await repository.applyTransition({ disconnect: [], connect: [applied(101)], observedAt: new Date("2026-01-01T00:10:00Z").toISOString(), syncStatus: "synced" });
 });
 
@@ -98,6 +98,52 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await second.close();
 });
 
+test("paused, degraded, and catching-up status survive actual SSE open and reconnect", async ({ page }) => {
+  await page.addInitScript(() => {
+    const tracked = window as typeof window & { __sseOpens: number };
+    tracked.__sseOpens = 0;
+    const NativeEventSource = window.EventSource;
+    window.EventSource = class extends NativeEventSource {
+      constructor(url: string | URL, configuration?: EventSourceInit) {
+        super(url, configuration);
+        this.addEventListener("open", () => { tracked.__sseOpens += 1; });
+      }
+    };
+  });
+  const app = await buildApp({
+    port: 3110,
+    databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  }, pool);
+  const opened = () => page.evaluate(() => (window as typeof window & { __sseOpens: number }).__sseOpens);
+  try {
+    await app.listen({ host: "127.0.0.1", port: 3110 });
+    for (const [syncStatus, expected] of [
+      ["paused", "Meals are paused. Play and decorating still work."],
+      ["degraded", "The block source isn't answering. Satoshi keeps what he has."],
+      ["catching-up", "Catching up on meals"],
+    ] as const) {
+      await pool.query("UPDATE world_state SET sync_status = $1 WHERE singleton = true", [syncStatus]);
+      await page.goto("http://127.0.0.1:3110/");
+      await expect(page.locator("#block-height")).toHaveText("#101");
+      await expect.poll(opened).toBeGreaterThan(0);
+      await expect(page.locator("#connection-label")).toHaveText(expected);
+      await expect(page.locator("#connection")).toHaveClass(`connection ${syncStatus}`);
+      const opensBeforeDisconnect = await opened();
+      const reconnect = page.waitForRequest((request) => request.url().includes("/api/stream?after="), { timeout: 15_000 });
+      app.server.closeAllConnections();
+      await reconnect;
+      await expect.poll(opened).toBeGreaterThan(opensBeforeDisconnect);
+      await expect(page.locator("#connection-label")).toHaveText(expected);
+      await expect(page.locator("#connection")).toHaveClass(`connection ${syncStatus}`);
+      await page.locator("#connection").screenshot({ path: `artifacts/status-${syncStatus}.png` });
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test("the actual browser SSE connection reconnects after the server drops its socket", async ({ page, browser }) => {
   const app = await buildApp({
     port: 3102,
@@ -138,13 +184,16 @@ test("a committed new block feeds live and twelve blocks evolve the cub", async 
     await repository.applyTransition({ disconnect: [], connect: [applied(102)], observedAt: new Date("2026-01-01T00:20:00Z").toISOString(), syncStatus: "synced" });
     await expect(page.locator("#block-height")).toHaveText("#102");
     await expect(page.locator("#food-name")).toHaveText("Warm porridge");
-    await expect(page.locator("#meal-count")).toHaveText("3");
+    await expect(page.locator("#meal-count")).toHaveText("2");
     for (const joy of [50, 60, 70, 80]) {
       await page.getByRole("button", { name: /Play with Satoshi/ }).click();
       await expect(page.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
     }
     await expect(page.locator("#mood-label")).toHaveText("JOYFUL");
-    await repository.applyTransition({ disconnect: [], connect: Array.from({ length: 10 }, (_, index) => applied(index + 103)), observedAt: new Date("2026-01-01T02:00:00Z").toISOString(), syncStatus: "synced" });
+    await repository.applyTransition({ disconnect: [], connect: Array.from({ length: 9 }, (_, index) => applied(index + 103)), observedAt: new Date("2026-01-01T02:00:00Z").toISOString(), syncStatus: "synced" });
+    await expect(page.locator("#pet-stage")).toHaveText("CUB");
+    await expect(page.locator("#growth-label")).toHaveText("11 of 12 blocks to growing up. Next stage at block 112.");
+    await repository.applyTransition({ disconnect: [], connect: [applied(112)], observedAt: new Date("2026-01-01T02:10:00Z").toISOString(), syncStatus: "synced" });
     await expect(page.locator("#pet-stage")).toHaveText("ROWDY");
     await expect(page.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-rowdy-48.png");
     await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());

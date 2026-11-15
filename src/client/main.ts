@@ -19,6 +19,17 @@ function announce(message: string): void {
   announceTimer = setTimeout(() => element.classList.remove("highlight"), 1800);
 }
 
+function renderConnectionStatus(syncStatus: WorldSnapshot["chain"]["syncStatus"]): void {
+  byId("connection").className = `connection ${syncStatus}`;
+  byId("connection-label").textContent = {
+    starting: "Connecting to the den…",
+    synced: "In step with the chain",
+    "catching-up": "Catching up on meals",
+    degraded: "The block source isn't answering. Satoshi keeps what he has.",
+    paused: "Meals are paused. Play and decorating still work.",
+  }[syncStatus];
+}
+
 function render(next: WorldSnapshot): void {
   const isNewMeal = next.pet.lastMeal && next.pet.lastMeal.blockHash !== previousMeal;
   const evolved = world?.pet.stage === "cub" && next.pet.stage === "rowdy";
@@ -34,15 +45,7 @@ function render(next: WorldSnapshot): void {
     ? `Observed ${new Date(next.chain.observedAt).toLocaleString()}`
     : "Provider data not yet observed";
 
-  const connection = byId("connection");
-  connection.className = `connection ${next.chain.syncStatus}`;
-  byId("connection-label").textContent = {
-    starting: "Connecting to the den…",
-    synced: "In step with the chain",
-    "catching-up": "Catching up on meals",
-    degraded: "The block source isn't answering. Satoshi keeps what he has.",
-    paused: "Meals are paused. Play and decorating still work.",
-  }[next.chain.syncStatus];
+  renderConnectionStatus(next.chain.syncStatus);
 
   byId("pet-stage").textContent = next.pet.stage.toUpperCase();
   const badger = byId<HTMLImageElement>("badger");
@@ -119,10 +122,7 @@ function openStream(after: number): void {
     byId("connection-label").textContent = "Lost the live link. Reconnecting.";
   };
   stream.onopen = () => {
-    if (world) {
-      byId("connection").className = `connection ${world.chain.syncStatus}`;
-      byId("connection-label").textContent = "In step with the chain";
-    }
+    if (world) renderConnectionStatus(world.chain.syncStatus);
   };
 }
 
