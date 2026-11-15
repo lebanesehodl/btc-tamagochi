@@ -6,6 +6,7 @@ import type { AppliedBlock } from "../shared/world.ts";
 import type { BlockSource } from "../shared/bitcoin.ts";
 import { acquireWorkerLease, type WorkerLease } from "./worker-lease.ts";
 import type { WorkerLike } from "./app.ts";
+import { HttpError } from "./world/errors.ts";
 
 export class BlockWorker implements WorkerLike {
   private readonly owner = crypto.randomUUID();
@@ -50,7 +51,10 @@ export class BlockWorker implements WorkerLike {
     this.running = this.tick().catch(async (error) => {
       const message = error instanceof BitcoinDataError ? `${error.code}: ${error.message}` : "Unexpected block-worker failure";
       const paused = error instanceof BitcoinDataError && ["baseline-unavailable", "source-behind"].includes(error.code);
-      await this.repository.markDegraded(message.slice(0, 300), paused ? "paused" : "degraded").catch(() => undefined);
+      this.needsStoryBoundary = true;
+      this.repository.beginChainObservation();
+      const lease = this.lease;
+      if (lease) await this.repository.markDegraded(message.slice(0, 300), paused ? "paused" : "degraded", lease).catch(() => undefined);
     }).finally(() => { this.running = null; });
   }
 
@@ -60,7 +64,10 @@ export class BlockWorker implements WorkerLike {
     try {
       const renewed = await acquireWorkerLease(this.repository.pool, this.owner);
       this.lease = renewed;
-      if (!renewed) await this.repository.markDegraded("Block-worker lease was lost", "paused");
+      if (!renewed) {
+        this.needsStoryBoundary = true;
+        this.repository.beginChainObservation();
+      }
     } catch {
       // The next polling tick will retry. No pet state is changed by this failure.
     } finally {
@@ -75,7 +82,8 @@ export class BlockWorker implements WorkerLike {
   private async tick(): Promise<void> {
     this.lease = await acquireWorkerLease(this.repository.pool, this.owner);
     if (!this.lease) {
-      await this.repository.markDegraded("Another block worker holds the active lease");
+      this.needsStoryBoundary = true;
+      this.repository.beginChainObservation();
       return;
     }
     const firstReconciliation = this.needsStoryBoundary;
@@ -88,7 +96,7 @@ export class BlockWorker implements WorkerLike {
         connect: [{ ...this.applyMeal(block), active: false }],
         observedAt: new Date().toISOString(),
         syncStatus: "synced",
-      }, this.lease);
+      }, this.currentLease());
       this.needsStoryBoundary = false;
       this.repository.completeChainObservation();
       return;
@@ -97,7 +105,7 @@ export class BlockWorker implements WorkerLike {
     const storyWasLive = !firstReconciliation && (await this.repository.snapshot()).chain.syncStatus === "synced";
     const transition = await reconcileChain(this.source, known);
     if (transition.disconnect.length === 0 && transition.connect.length === 0) {
-      await this.repository.markHealthy(new Date().toISOString(), firstReconciliation, this.lease);
+      await this.repository.markHealthy(new Date().toISOString(), firstReconciliation, this.currentLease());
       this.needsStoryBoundary = false;
       this.repository.completeChainObservation();
       return;
@@ -109,9 +117,15 @@ export class BlockWorker implements WorkerLike {
       observedAt: new Date().toISOString(),
       syncStatus: "synced",
       storyLive: storyWasLive && transition.disconnect.length === 0 && transition.connect.length === 1,
-    }, this.lease);
+    }, this.currentLease());
     this.needsStoryBoundary = false;
     this.repository.completeChainObservation();
+  }
+
+  private currentLease(): WorkerLease {
+    const lease = this.lease;
+    if (!lease) throw new HttpError(409, "Block-worker lease is stale");
+    return lease;
   }
 
   private applyMeal(block: AppliedBlock["block"]): AppliedBlock {

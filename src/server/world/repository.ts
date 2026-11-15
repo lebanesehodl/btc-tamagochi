@@ -366,8 +366,8 @@ export class WorldRepository {
     await this.setSyncStatus("synced", null, observedAt, establishStoryBoundary, lease);
   }
 
-  async markDegraded(message: string, status: "degraded" | "paused" = "degraded"): Promise<void> {
-    await this.setSyncStatus(status, message.slice(0, 300), new Date().toISOString());
+  async markDegraded(message: string, status: "degraded" | "paused" = "degraded", lease: WorkerLease | null = null): Promise<void> {
+    await this.setSyncStatus(status, message.slice(0, 300), new Date().toISOString(), false, lease);
   }
 
   private async setSyncStatus(status: WorldSnapshot["chain"]["syncStatus"], lastError: string | null, observedAt: string, establishStoryBoundary = false, lease: WorkerLease | null = null): Promise<void> {

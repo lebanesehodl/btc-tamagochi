@@ -8,6 +8,7 @@ import type { AppConfig } from "../src/server/config.ts";
 import { migrate } from "../src/server/migrate.ts";
 import { WorldRepository } from "../src/server/world/repository.ts";
 import { BitcoinDataError } from "../src/server/bitcoin/index.ts";
+import { acquireWorkerLease, type WorkerLease } from "../src/server/worker-lease.ts";
 
 const hash = (name: string) => crypto.createHash("sha256").update(name).digest("hex");
 const block = (height: number, name = `block-${height}`): BlockMetadata => ({
@@ -160,6 +161,47 @@ it("blocks mature hash activation while a new worker is still waiting for startu
   expect(gated.chain.syncStatus).toBe("synced");
   expect((await pool.query("SELECT status FROM story_hash_candidates WHERE height = 101")).rows[0].status).toBe("consumed");
   expect((await pool.query("SELECT price_zone FROM story_state")).rows[0].price_zone).toBe("baseline-required");
+});
+
+it.each(["bootstrap", "no-op", "connected-block"] as const)("fails closed on %s if renewal loses the lease during a provider read", async (mode) => {
+  const source = new FakeSource();
+  const readTip = source.getTipHash.bind(source);
+  let enteredRead!: () => void;
+  let releaseRead!: () => void;
+  const entered = new Promise<void>((resolve) => { enteredRead = resolve; });
+  const held = new Promise<void>((resolve) => { releaseRead = resolve; });
+  let blockReads = false;
+  source.getTipHash = async () => {
+    if (blockReads) { enteredRead(); await held; }
+    return readTip();
+  };
+  const worker = new BlockWorker(repository, config, source);
+  if (mode !== "bootstrap") await worker.runOnce();
+  if (mode === "connected-block") {
+    source.blocks.set(101, block(101));
+    source.tip = 101;
+  }
+  await repository.markDegraded("fixture pause", "paused");
+  const before = await repository.snapshot();
+
+  blockReads = true;
+  const running = worker.runOnce();
+  await entered;
+  await pool.query("UPDATE worker_leases SET expires_at = now() - interval '1 second'");
+  expect(await acquireWorkerLease(pool, crypto.randomUUID())).not.toBeNull();
+  // This is the renewal outcome under review: mutable worker ownership is now absent.
+  (worker as unknown as { lease: WorkerLease | null }).lease = null;
+  releaseRead();
+  await expect(running).rejects.toMatchObject({ statusCode: 409 });
+
+  const after = await repository.snapshot();
+  expect(after.chain.syncStatus).toBe("paused");
+  expect(after.revision).toBe(before.revision);
+  expect(after.chain.height).toBe(mode === "bootstrap" ? null : 100);
+  expect(after.pet.meals).toBe(0);
+  expect((await pool.query("SELECT live_boundary_height FROM story_state")).rows[0].live_boundary_height)
+    .toBe(mode === "bootstrap" ? null : "100");
+  expect((await pool.query("SELECT count(*)::int AS n FROM block_journal WHERE height = 101")).rows[0].n).toBe(0);
 });
 
 it("evolves after twelve credited blocks from an uncredited baseline, deduplicates polls, and replays a reorg", async () => {
