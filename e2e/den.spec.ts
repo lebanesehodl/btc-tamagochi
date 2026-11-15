@@ -41,14 +41,21 @@ test("desktop meal, play, decoration, and inspected production render", async ({
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page).toHaveTitle(/Ratel/);
+  await expect(page.getByRole("heading", { name: "Satoshi’s little world.", exact: true })).toBeVisible();
+  await page.getByText("How meals arrive", { exact: true }).click();
+  await expect(page.locator("#block-hash")).toBeVisible();
+  await expect(page.locator("#observed-at")).toContainText("Observed");
+  await page.getByText("How meals arrive", { exact: true }).click();
+  await expect(page.locator(".meal-details")).not.toHaveAttribute("open", "");
   await expect(page.locator("#badger")).toBeVisible();
   await expect(page.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-neutral-48.png");
   await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
   expect(await page.locator("#badger").evaluate((image: HTMLImageElement) => ({ width: image.naturalWidth, height: image.naturalHeight }))).toEqual({ width: 48, height: 48 });
   await expect(page.locator("#block-height")).toHaveText("#101");
   await expect(page.locator("#food-name")).toHaveText("Berry bowl");
+  await expect(page.locator("#meal-bubble")).toHaveText("Sniff first. Then devour.");
   for (const joy of [50, 60, 70, 80]) {
-    await page.getByRole("button", { name: /Play with the badger/ }).click();
+    await page.getByRole("button", { name: /Play with Satoshi/ }).click();
     await expect(page.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
   }
   await expect(page.locator("#mood-label")).toHaveText("JOYFUL");
@@ -56,6 +63,8 @@ test("desktop meal, play, decoration, and inspected production render", async ({
   await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
   await page.locator('[data-slot="wall"] [data-item="genesis-poster"]').click();
   await expect(page.locator("#den-wall")).toHaveClass(/genesis-poster/);
+  await expect(page.locator("#announcement")).toHaveText("The wall now has Genesis poster.");
+  await expect(page.locator("#slot-state-wall")).toHaveText("This spot is taken. Pick another.");
   await page.screenshot({ path: "artifacts/desktop.png", fullPage: true });
   expect(errors).toEqual([]);
 });
@@ -70,7 +79,7 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await expect(a.locator("#block-height")).toHaveText("#101");
   await expect(b.locator("#joy-label")).toHaveText("JOY 40/100");
   for (const joy of [50, 60, 70, 80]) {
-    await a.getByRole("button", { name: /Play with the badger/ }).click();
+    await a.getByRole("button", { name: /Play with Satoshi/ }).click();
     await expect(a.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
   }
   await expect(b.locator("#joy-label")).toHaveText("JOY 80/100");
@@ -80,9 +89,10 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await a.locator('[data-slot="wall"] [data-item="genesis-poster"]').click();
   await expect(b.locator("#den-wall")).toHaveClass(/genesis-poster/);
   await expect(b.locator('[data-slot="wall"] [data-item="badger-poster"]')).toBeDisabled();
+  await expect(b.locator('[data-slot="wall"] [data-item="badger-poster"]')).toHaveAttribute("aria-describedby", "slot-state-wall");
   await b.screenshot({ path: "artifacts/second-visitor.png", fullPage: true });
 
-  await b.getByRole("button", { name: /Play with the badger/ }).click();
+  await b.getByRole("button", { name: /Play with Satoshi/ }).click();
   await expect(a.locator("#joy-label")).toHaveText("JOY 90/100");
   await first.close();
   await second.close();
@@ -101,12 +111,12 @@ test("the actual browser SSE connection reconnects after the server drops its so
     await app.listen({ host: "127.0.0.1", port: 3102 });
     await page.goto("http://127.0.0.1:3102/");
     await expect(page.locator("#block-height")).toHaveText("#101");
-    await expect(page.locator("#connection-label")).toHaveText("Live on Bitcoin time");
+    await expect(page.locator("#connection-label")).toHaveText("In step with the chain");
     const reconnect = page.waitForRequest((request) => request.url().includes("/api/stream?after="), { timeout: 15_000 });
     app.server.closeAllConnections();
     await reconnect;
     await other.goto("http://127.0.0.1:3102/");
-    await other.getByRole("button", { name: /Play with the badger/ }).click();
+    await other.getByRole("button", { name: /Play with Satoshi/ }).click();
     await expect(page.locator("#joy-label")).toHaveText("JOY 50/100");
   } finally {
     await visitor.close();
@@ -130,7 +140,7 @@ test("a committed new block feeds live and twelve blocks evolve the cub", async 
     await expect(page.locator("#food-name")).toHaveText("Warm porridge");
     await expect(page.locator("#meal-count")).toHaveText("3");
     for (const joy of [50, 60, 70, 80]) {
-      await page.getByRole("button", { name: /Play with the badger/ }).click();
+      await page.getByRole("button", { name: /Play with Satoshi/ }).click();
       await expect(page.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
     }
     await expect(page.locator("#mood-label")).toHaveText("JOYFUL");
@@ -146,6 +156,39 @@ test("a committed new block feeds live and twelve blocks evolve the cub", async 
   }
 });
 
+test("a stale visitor conflict gets friendly copy and a refreshed locked-slot explanation", async ({ browser }) => {
+  const app = await buildApp({
+    port: 3104,
+    databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  }, pool, { repository });
+  const first = await browser.newContext();
+  const stale = await browser.newContext();
+  const a = await first.newPage();
+  const b = await stale.newPage();
+  try {
+    await stale.route("**/api/stream**", (route) => route.abort());
+    await app.listen({ host: "127.0.0.1", port: 3104 });
+    await a.goto("http://127.0.0.1:3104/");
+    await b.goto("http://127.0.0.1:3104/");
+    await expect(b.locator("#joy-label")).toHaveText("JOY 40/100");
+    await a.locator('[data-slot="wall"] [data-item="genesis-poster"]').click();
+    await expect(a.locator("#den-wall")).toHaveClass(/genesis-poster/);
+    // The second visitor still has slot version zero; its real button click hits a version conflict.
+    await b.locator('[data-slot="wall"] [data-item="badger-poster"]').click();
+    await expect(b.locator("#action-error")).toHaveText("Someone changed that spot first. Here is the den now.");
+    await expect(b.locator("#action-error")).not.toContainText("The den changed; refresh and try again");
+    await expect(b.locator("#slot-state-wall")).toHaveText("This spot is taken. Pick another.");
+    await expect(b.locator('[data-slot="wall"] [data-item="badger-poster"]')).toBeDisabled();
+    await b.screenshot({ path: "artifacts/stale-conflict.png", fullPage: true });
+  } finally {
+    await first.close();
+    await stale.close();
+    await app.close();
+  }
+});
+
 test("mobile layout has no horizontal overflow and preserves controls", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -157,6 +200,7 @@ test("mobile layout has no horizontal overflow and preserves controls", async ({
   await page.locator('[data-slot="floor"] [data-item="orange-rug"]').scrollIntoViewIfNeeded();
   await page.locator('[data-slot="floor"] [data-item="orange-rug"]').click();
   await expect(page.locator("#den-floor")).toHaveClass(/orange-rug/);
+  await expect(page.locator("#slot-state-floor")).toHaveText("This spot is taken. Pick another.");
   await page.screenshot({ path: "artifacts/mobile.png", fullPage: true });
   const dimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.viewport);
