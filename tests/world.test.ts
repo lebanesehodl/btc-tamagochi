@@ -134,7 +134,8 @@ describe("community actions", () => {
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     const winner = results.find((result) => result.status === "fulfilled");
     if (winner?.status !== "fulfilled") throw new Error("No decoration was applied");
-    await expect(repository.applyAction(bob, crypto.randomUUID(), { kind: "decorate", slot: "wall", itemId: "badger-poster", expectedVersion: 1 })).rejects.toMatchObject({ statusCode: 409 });
+    const losingVisitor = results[0]?.status === "fulfilled" ? bob : alice;
+    await expect(repository.applyAction(losingVisitor, crypto.randomUUID(), { kind: "decorate", slot: "wall", itemId: "badger-poster", expectedVersion: 1 })).rejects.toMatchObject({ statusCode: 409 });
     await expect(repository.applyAction(alice, crypto.randomUUID(), { ...action, expectedVersion: 0 })).rejects.toMatchObject({ statusCode: 409 });
   });
 
