@@ -19,12 +19,22 @@ function announce(message: string): void {
   announceTimer = setTimeout(() => element.classList.remove("highlight"), 1800);
 }
 
+function renderConnectionStatus(syncStatus: WorldSnapshot["chain"]["syncStatus"]): void {
+  byId("connection").className = `connection ${syncStatus}`;
+  byId("connection-label").textContent = {
+    starting: "Connecting to the den…",
+    synced: "In step with the chain",
+    "catching-up": "Catching up on meals",
+    degraded: "The block source isn't answering. Satoshi keeps what he has.",
+    paused: "Meals are paused. Play and decorating still work.",
+  }[syncStatus];
+}
+
 function render(next: WorldSnapshot): void {
+  if (world !== null && next.revision <= world.revision) return;
   const isNewMeal = next.pet.lastMeal && next.pet.lastMeal.blockHash !== previousMeal;
   const evolved = world?.pet.stage === "cub" && next.pet.stage === "rowdy";
-  const wasBehind = world !== null && next.revision <= world.revision;
   world = next;
-  if (wasBehind) return;
   previousMeal = next.pet.lastMeal?.blockHash ?? null;
 
   byId("block-height").textContent = next.chain.height === null ? "—" : `#${next.chain.height.toLocaleString()}`;
@@ -34,18 +44,15 @@ function render(next: WorldSnapshot): void {
     ? `Observed ${new Date(next.chain.observedAt).toLocaleString()}`
     : "Provider data not yet observed";
 
-  const connection = byId("connection");
-  connection.className = `connection ${next.chain.syncStatus}`;
-  byId("connection-label").textContent = {
-    starting: "Connecting to the den…",
-    synced: "Live on Bitcoin time",
-    "catching-up": "Catching up on meals",
-    degraded: "Connection trouble—pet is safe",
-    paused: "Chain reconciliation paused—pet is safe",
-  }[next.chain.syncStatus];
+  renderConnectionStatus(next.chain.syncStatus);
 
   byId("pet-stage").textContent = next.pet.stage.toUpperCase();
-  byId("badger").className = `badger ${next.pet.stage} ${next.pet.mood}`;
+  const badger = byId<HTMLImageElement>("badger");
+  const sprite = next.pet.stage === "rowdy" ? "rowdy" : next.pet.mood === "joyful" ? "joyful" : "neutral";
+  const spriteUrl = `/satoshi/satoshi-${sprite}-48.png`;
+  if (badger.getAttribute("src") !== spriteUrl) badger.src = spriteUrl;
+  badger.alt = `Satoshi, the communal honey badger${sprite === "rowdy" ? ", now rowdy" : sprite === "joyful" ? ", looking joyful" : ""}`;
+  badger.className = `badger ${next.pet.stage} ${next.pet.mood}`;
   byId("den-scene").className = `den-scene mood-${next.pet.mood}`;
   byId("mood-label").textContent = next.pet.mood.toUpperCase();
   byId("meal-count").textContent = String(next.pet.meals);
@@ -54,14 +61,15 @@ function render(next: WorldSnapshot): void {
   byId<HTMLProgressElement>("growth-fill").value = Math.min(12, next.pet.growthBlocks);
   byId("growth-label").textContent = next.pet.nextEvolutionAt === null
     ? `Evolved after ${next.pet.growthBlocks} blocks together.`
-    : `${next.pet.growthBlocks}/12 growth blocks · evolution at height ${next.pet.nextEvolutionAt}`;
+    : `${next.pet.growthBlocks} of 12 blocks to growing up. Next stage at block ${next.pet.nextEvolutionAt}.`;
 
   const meal = next.pet.lastMeal;
+  const reaction = meal?.reaction === "happy" ? "A very good bite." : meal?.reaction === "curious" ? "Sniff first. Then devour." : "Full belly. Tiny nap.";
   byId("food-name").textContent = meal?.foodName ?? "Nothing yet";
   byId("food-reaction").textContent = meal
-    ? `${meal.reaction === "happy" ? "A very good bite." : meal.reaction === "curious" ? "Sniff first. Then devour." : "Full belly. Tiny nap."} Delivered by block #${meal.height}.`
+    ? `${reaction} Delivered by block #${meal.height}.`
     : "Every observed block delivers the same pantry item to everyone.";
-  byId("meal-bubble").textContent = meal ? `${meal.foodName} · block #${meal.height}` : "A new block will bring dinner.";
+  byId("meal-bubble").textContent = meal ? reaction : "A new block will bring dinner.";
   byId("food").classList.toggle("hidden", !meal);
   byId("food-icon").className = meal ? `food-icon ${meal.foodId}` : "food-icon";
 
@@ -89,10 +97,10 @@ async function refresh(): Promise<void> {
     const shouldOpen = stream === null || stream.readyState === EventSource.CLOSED;
     render(snapshot);
     if (shouldOpen) openStream(snapshot.revision);
-  } catch (error) {
+  } catch {
     byId("connection").className = "connection degraded";
     byId("connection-label").textContent = "Cannot reach the den—retrying";
-    byId("announcement").textContent = error instanceof Error ? error.message : "Connection failed";
+    byId("announcement").textContent = "The den could not be reached. Trying again.";
     setTimeout(refresh, 5000);
   }
 }
@@ -110,14 +118,18 @@ function openStream(after: number): void {
   });
   stream.onerror = () => {
     byId("connection").className = "connection degraded";
-    byId("connection-label").textContent = "Live updates reconnecting—pet is safe";
+    byId("connection-label").textContent = "Lost the live link. Reconnecting.";
   };
   stream.onopen = () => {
-    if (world) {
-      byId("connection").className = `connection ${world.chain.syncStatus}`;
-      byId("connection-label").textContent = "Live on Bitcoin time";
-    }
+    if (world) renderConnectionStatus(world.chain.syncStatus);
   };
+}
+
+function friendlyActionError(status: number, code: unknown): string {
+  if (status === 409 && code === "slot_taken") return "Someone else placed this one. Pick a spot that's still open.";
+  if (status === 409 && code === "den_changed") return "Someone changed that spot first. Here is the den now.";
+  if (status === 429) return "A little pause. Try again soon.";
+  return "That didn't go through. Try again.";
 }
 
 async function act(action: ActionRequest): Promise<void> {
@@ -132,12 +144,19 @@ async function act(action: ActionRequest): Promise<void> {
       body: JSON.stringify(action),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error ?? `Action failed: ${response.status}`);
+    if (!response.ok) {
+      byId("action-error").textContent = friendlyActionError(response.status, result?.code);
+      await refresh();
+      return;
+    }
     render(result.snapshot as WorldSnapshot);
     if (action.kind === "play") announce("Badger joy increased. That was definitely your doing.");
-    else announce("Your decoration has a home in the communal den.");
-  } catch (error) {
-    byId("action-error").textContent = error instanceof Error ? error.message : "Action failed";
+    else {
+      const itemName = document.querySelector(`[data-slot="${action.slot}"] [data-item="${action.itemId}"]`)?.textContent ?? action.itemId.replaceAll("-", " ");
+      announce(`The ${action.slot} now has ${itemName}.`);
+    }
+  } catch {
+    byId("action-error").textContent = "The den could not hear that. Try again.";
     await refresh();
   } finally {
     actionBusy = false;
@@ -153,12 +172,16 @@ function updateButtons(): void {
     const slot = parent.dataset.slot as DenSlot;
     const decoration = world?.den.find((item) => item.slot === slot);
     button.disabled = actionBusy || decoration?.itemId !== null;
+    if (decoration?.itemId) button.setAttribute("aria-describedby", `slot-state-${slot}`);
+    else button.removeAttribute("aria-describedby");
   });
-  document.querySelectorAll<HTMLButtonElement>(".slot-control").forEach((control) => {
+  document.querySelectorAll<HTMLElement>(".slot-control").forEach((control) => {
     const label = control.querySelector("span") as HTMLSpanElement;
     const slot = control.dataset.slot as DenSlot;
     const item = world?.den.find((entry) => entry.slot === slot)?.itemId;
     label.textContent = `${slot[0]?.toUpperCase()}${slot.slice(1)}${item ? ` · ${item.replaceAll("-", " ")}` : ""}`;
+    const note = control.querySelector<HTMLElement>(".slot-state");
+    if (note) note.textContent = item ? "This spot is taken. Pick another." : "";
   });
 }
 

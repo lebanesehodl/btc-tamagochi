@@ -188,7 +188,7 @@ export async function buildApp(config: AppConfig, pool: Pool, options: BuildAppO
 
   app.setErrorHandler((error: unknown, _request, reply) => {
     if (error instanceof HttpError) {
-      reply.code(error.statusCode).send({ error: error.message });
+      reply.code(error.statusCode).send({ error: error.message, code: error.code });
       return;
     }
     const candidate = error as { statusCode?: unknown; message?: unknown };

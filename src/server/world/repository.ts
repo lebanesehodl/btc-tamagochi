@@ -64,7 +64,8 @@ function numberField(value: string | number | null): number | null {
 
 function snapshotFromRow(row: SnapshotRow): WorldSnapshot {
   const activeBlocks = Number(row.active_blocks);
-  const growthBlocks = Math.max(0, activeBlocks - 1);
+  // The uncredited bootstrap row is already excluded from this count.
+  const growthBlocks = activeBlocks;
   const hatchedAtHeight = numberField(row.hatched_height);
   const fullness = activeBlocks === 0 ? 0 : Math.min(100, 40 + activeBlocks * 20);
   const joy = row.joy;
@@ -135,7 +136,8 @@ export class WorldRepository {
 
   async knownActiveChain(): Promise<Array<{ id: string; height: number; previousblockhash: string | null; timestamp: number }>> {
     const result = await this.pool.query(
-      "SELECT block_hash AS id, height, parent_hash AS previousblockhash, block_timestamp AS timestamp FROM block_journal WHERE active OR block_hash = (SELECT chain_hash FROM world_state) ORDER BY height ASC",
+      // Keep the original uncredited hatch as reorg context after later blocks become active.
+      "SELECT block_hash AS id, height, parent_hash AS previousblockhash, block_timestamp AS timestamp FROM block_journal WHERE active OR block_hash = (SELECT chain_hash FROM world_state) OR height = (SELECT hatched_height FROM world_state WHERE singleton = true) ORDER BY height ASC",
     );
     return result.rows.map((row) => ({
       id: row.id,
@@ -210,8 +212,8 @@ export class WorldRepository {
         );
         if (inserted.rowCount !== 1) {
           const restored = await client.query(
-            `UPDATE block_journal SET active = $10, observed_at = $2
-             WHERE block_hash = $1 AND active = false AND height = $3 AND parent_hash IS NOT DISTINCT FROM $4
+            `UPDATE block_journal SET active = $10, observed_at = $1::timestamptz
+             WHERE block_hash = $2 AND active = false AND height = $3 AND parent_hash IS NOT DISTINCT FROM $4
                AND block_timestamp = $5 AND food_id = $6 AND food_name = $7 AND pantry_version = $8 AND reaction = $9`,
             [transition.observedAt, block.id, block.height, block.previousblockhash, block.timestamp, meal.foodId, meal.foodName, meal.pantryVersion, meal.reaction, active],
           );
@@ -321,7 +323,7 @@ export class WorldRepository {
         await client.query("UPDATE world_state SET joy = LEAST(100, joy + 10)");
       } else {
         if (!validDecoration(action.slot, action.itemId) || !Number.isSafeInteger(action.expectedVersion) || action.expectedVersion < 0) {
-          throw new HttpError(422, "Unknown decoration or invalid slot version");
+          throw new HttpError(422, "Unknown decoration or invalid slot version", "invalid_decoration");
         }
         const current = await client.query(
           "SELECT s.version, s.action_id, c.session_id FROM den_slots s LEFT JOIN community_actions c ON c.id = s.action_id WHERE s.slot = $1 FOR UPDATE OF s",
@@ -329,8 +331,8 @@ export class WorldRepository {
         );
         const slot = current.rows[0];
         if (!slot) throw new HttpError(422, "Unknown den slot");
-        if (Number(slot.version) !== action.expectedVersion) throw new HttpError(409, "The den changed; refresh and try again");
-        if (slot.action_id && slot.session_id !== sessionId) throw new HttpError(409, "Another visitor contributed this item; choose an open slot");
+        if (Number(slot.version) !== action.expectedVersion) throw new HttpError(409, "The den changed; refresh and try again", "den_changed");
+        if (slot.action_id && slot.session_id !== sessionId) throw new HttpError(409, "Another visitor contributed this item; choose an open slot", "slot_taken");
         await client.query(
           "UPDATE den_slots SET item_id = $1, version = version + 1, action_id = $2 WHERE slot = $3",
           [action.itemId, actionId, action.slot],

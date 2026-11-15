@@ -4,6 +4,8 @@ A communal pixel honey badger fed by new Bitcoin blocks. One shared den, anonymo
 
 The public UI is **Ratel**, and the communal honey badger is **Satoshi**. This repository is the web MVP; it is not itself a deployed URL. The established copy does not imply that the pet represents or is endorsed by Bitcoin’s creator. Name/domain/trademark review remains open before a permanent branded launch.
 
+The page is character-led: Satoshi and the shared den take priority over block telemetry. Warm paper, mint, peach, and lilac frame the 8-bit character; generic room details and curated decorations make the den a shared place. Latest-meal food remains visible, while block height/hash, provider observation, and trust details are available through **How meals arrive**. The compact status, pantry, and decoration controls preserve the existing shared-world behavior. Occupied slots carry a visible explanation. Action errors are translated to friendly client-side messages from stable result codes or status codes rather than exposing raw server failures.
+
 ## How it works
 
 - The server observes Blockstream Esplora’s mainnet tip. On first start, the observed tip becomes an **uncredited baseline**; historical meals are not awarded.
@@ -12,6 +14,10 @@ The public UI is **Ratel**, and the communal honey badger is **Satoshi**. This r
 - Anyone can play or choose curated den items. No login is needed; an anonymous HttpOnly cookie carries a long opaque session token. This is not proof of unique humanity.
 - All visitors share authoritative PostgreSQL state. Committed changes arrive over Server-Sent Events.
 - Reorgs undo only displaced block meals. Play and decorations remain intact. Provider-reported data is not independently consensus-verified.
+
+## Pixel character assets
+
+OP selected 8-bit as the product art direction. `public/satoshi/` contains the original transparent 48×48 neutral, joyful, and rowdy masters. The client selects **rowdy first**, then **joyful**, then **neutral**, and scales with nearest-neighbor rendering. Food and scene shadows remain separate; no default pizza or merchant branding is included. See `docs/pixel-assets.md` for provenance, state precedence, and verified asset hashes. These claims cover browser assets, not watch hardware.
 
 ## Local development
 
@@ -34,7 +40,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run check` runs TypeScript, all PostgreSQL/unit tests, and the production build. `npm run test:e2e` rebuilds, starts an isolated local server with the block worker disabled, and exercises desktop, mobile, two separate browser visitors, live block feeding/evolution, decoration, and actual SSE socket reconnect. Success screenshots are written to ignored `artifacts/` files; traces on failure go to `test-results/`. CI runs `npm run check` on Node 24 with PostgreSQL 16; browser tests require an explicit Chromium installation.
+`npm run check` runs TypeScript, all PostgreSQL/unit tests, and the production build. A real worker/reconciler/PostgreSQL regression covers the uncredited baseline, 11/12-block evolution boundary, duplicate polls, and reorg rollback/replay. `npm run test:e2e` rebuilds, starts an isolated local server with the block worker disabled, and exercises desktop, mobile, two separate browser visitors, live block feeding/evolution, decoration, stale-decoration conflicts, and actual SSE socket reconnect while preserving paused/degraded/catching-up status. Success screenshots are written to ignored `artifacts/` files; traces on failure go to `test-results/`. CI runs `npm run check` on Node 24 with PostgreSQL 16; browser tests require an explicit Chromium installation.
 
 The PostgreSQL tests reset the dedicated `btc_tamagochi` database. Do not point the tests at production data.
 
