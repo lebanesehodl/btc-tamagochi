@@ -13,6 +13,10 @@ The public UI is **Ratel**, and the communal honey badger is **Satoshi**. This r
 - All visitors share authoritative PostgreSQL state. Committed changes arrive over Server-Sent Events.
 - Reorgs undo only displaced block meals. Play and decorations remain intact. Provider-reported data is not independently consensus-verified.
 
+## Pixel character assets
+
+OP selected 8-bit as the product art direction. `public/satoshi/` contains the original transparent 48×48 neutral, joyful, and rowdy masters. The client selects **rowdy first**, then **joyful**, then **neutral**, and scales with nearest-neighbor rendering. Food and scene shadows remain separate; no default pizza or merchant branding is included. See `docs/pixel-assets.md` for provenance, state precedence, and verified asset hashes. These claims cover browser assets, not watch hardware.
+
 ## Local development
 
 Requirements: Node.js 24, npm, PostgreSQL 16, and Docker for the supplied local database.
