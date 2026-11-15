@@ -69,6 +69,8 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .decoration-controls { display: grid; gap: 13px; margin-top: 18px; }
 .slot-control { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .slot-control > span { grid-column: 1 / -1; color: var(--ink); font-size: 12px; font-weight: 650; text-transform: capitalize; }
+.slot-state { grid-column: 1 / -1; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.slot-state:empty { display: none; }
 .slot-control button { border: 1px solid var(--line); border-radius: 9px; background: #f0f2e7; color: var(--forest); padding: 10px 8px; font-size: 11px; font-weight: 600; cursor: pointer; }
 .slot-control button:hover:not(:disabled) { border-color: var(--forest); background: var(--lilac); color: var(--ink); }
 .slot-occupied button { opacity: .35; }

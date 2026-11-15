@@ -321,7 +321,7 @@ export class WorldRepository {
         await client.query("UPDATE world_state SET joy = LEAST(100, joy + 10)");
       } else {
         if (!validDecoration(action.slot, action.itemId) || !Number.isSafeInteger(action.expectedVersion) || action.expectedVersion < 0) {
-          throw new HttpError(422, "Unknown decoration or invalid slot version");
+          throw new HttpError(422, "Unknown decoration or invalid slot version", "invalid_decoration");
         }
         const current = await client.query(
           "SELECT s.version, s.action_id, c.session_id FROM den_slots s LEFT JOIN community_actions c ON c.id = s.action_id WHERE s.slot = $1 FOR UPDATE OF s",
@@ -329,8 +329,8 @@ export class WorldRepository {
         );
         const slot = current.rows[0];
         if (!slot) throw new HttpError(422, "Unknown den slot");
-        if (Number(slot.version) !== action.expectedVersion) throw new HttpError(409, "The den changed; refresh and try again");
-        if (slot.action_id && slot.session_id !== sessionId) throw new HttpError(409, "Another visitor contributed this item; choose an open slot");
+        if (Number(slot.version) !== action.expectedVersion) throw new HttpError(409, "The den changed; refresh and try again", "den_changed");
+        if (slot.action_id && slot.session_id !== sessionId) throw new HttpError(409, "Another visitor contributed this item; choose an open slot", "slot_taken");
         await client.query(
           "UPDATE den_slots SET item_id = $1, version = version + 1, action_id = $2 WHERE slot = $3",
           [action.itemId, actionId, action.slot],
