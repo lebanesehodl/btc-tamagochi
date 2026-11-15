@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#17130f" />
+    <meta name="theme-color" content="#f6f3e9" />
     <meta name="description" content="A shared honey badger that eats one meal per new Bitcoin block. Play with it and decorate its den. No account." />
     <title>Ratel — the block-fed badger</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -18,15 +18,9 @@
     <main>
       <section class="hero" aria-labelledby="hero-title">
         <div>
-          <p class="eyebrow">ONE BLOCKCHAIN. ONE COMMUNAL BADGER.</p>
-          <h1 id="hero-title">Bitcoin brings the meals.<br /><em>Everyone brings the joy.</em></h1>
-          <p class="hero-copy">Satoshi is a small honey badger living on Bitcoin time. New blocks deliver food; visitors keep its den playful. Come back any time. Satoshi will be fine.</p>
-        </div>
-        <div class="block-card" aria-label="Latest processed Bitcoin block">
-          <span class="card-label">LATEST BLOCK MEAL</span>
-          <strong id="block-height">—</strong>
-          <code id="block-hash">Waiting for the chain…</code>
-          <span id="observed-at">Provider data not yet observed</span>
+          <p class="eyebrow">ONE BADGER. ONE SHARED DEN.</p>
+          <h1 id="hero-title">Satoshi’s little world.</h1>
+          <p class="hero-copy">One badger, shared by everyone. A new meal arrives with each Bitcoin block.</p>
         </div>
       </section>
 
@@ -34,6 +28,7 @@
         <div class="den-panel">
           <div class="den-heading"><span>THE COMMUNAL DEN</span><span id="pet-stage">CUB</span></div>
           <div id="den-scene" class="den-scene mood-content">
+            <div class="den-window" aria-hidden="true"></div>
             <div id="den-wall" class="den-decoration decoration-wall empty" aria-label="Wall decoration"></div>
             <div id="den-corner" class="den-decoration decoration-corner empty" aria-label="Corner decoration"></div>
             <div id="den-floor" class="den-decoration decoration-floor empty" aria-label="Floor decoration"></div>
@@ -45,14 +40,14 @@
           </div>
           <div id="announcement" class="announcement" aria-live="polite">The badger is waiting for its first observed block.</div>
           <div class="actions">
-            <button id="play-button" class="primary-action" type="button">Play with the badger <span>+JOY</span></button>
+            <button id="play-button" class="primary-action" type="button">Play with Satoshi <span>+JOY</span></button>
             <span id="joy-label" class="joy-label">JOY —</span>
           </div>
         </div>
 
         <aside class="care-panel">
           <section class="status-section">
-            <div class="section-heading"><span>BADGER STATUS</span><span id="mood-label">WAITING</span></div>
+            <div class="section-heading"><span>SATOSHI</span><span id="mood-label">WAITING</span></div>
             <div class="stat-row"><span>Meals shared</span><strong id="meal-count">0</strong></div>
             <div class="stat-row"><span>Fullness</span><strong id="fullness-label">—</strong></div>
             <div class="growth-track"><progress id="growth-fill" max="12" value="0" aria-label="Growth toward evolution"></progress></div>
@@ -61,7 +56,17 @@
 
           <section class="pantry-section">
             <div class="section-heading"><span>IN THE BOWL</span><span>BLOCK-FED</span></div>
-            <h2 id="food-name">Nothing yet</h2>
+            <div class="block-card" aria-label="Latest meal delivered by a Bitcoin block">
+              <span class="card-label">LATEST MEAL</span>
+              <h2 id="food-name">Nothing yet</h2>
+              <span class="meal-block">Block <strong id="block-height">—</strong></span>
+              <details class="meal-details">
+                <summary>How meals arrive</summary>
+                <code id="block-hash">Waiting for the chain…</code>
+                <span id="observed-at">Provider data not yet observed</span>
+                <p>Each new Bitcoin block brings a meal. Block data is provider-reported, not independently consensus-verified.</p>
+              </details>
+            </div>
             <p id="food-reaction">Every observed block delivers the same pantry item to everyone.</p>
           </section>
 

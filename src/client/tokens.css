@@ -1,9 +1,15 @@
 :root {
-  --ink: #17130f;
-  --panel: #211d17;
-  --line: #494034;
-  --cream: #f2e6cd;
-  --muted: #aa9d8a;
-  --bitcoin: #f7931a;
-  --green: #a8d99b;
+  --ink: #24362f;
+  --forest: #405a4b;
+  --paper: #f6f3e9;
+  --panel: #fffdf5;
+  --line: #24362f2a;
+  --muted: #5a695f;
+  --accent: #edab91;
+  --mint: #dce9d8;
+  --green: #44775a;
+  --lilac: #e5dcf6;
+  --peach: #f0d5bd;
+  --sun: #ffe4b8;
+  --danger: #9b4335;
 }

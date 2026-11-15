@@ -4,7 +4,7 @@ OP selected **8-bit** as the product art direction. The colorful 3D boards were 
 
 ## Committed files
 
-`public/satoshi/` contains the original transparent 48×48 neutral, joyful, and rowdy masters from Bitcoin’s standalone `ratel-satoshi-assets-v1` handoff. These master files are served directly; CSS displays them at integer multiples with `image-rendering: pixelated` (288px desktop, 240px mobile). No smoothing, rotation, saturation filter, baked food, baked shadow, merchant mark, or required animation is applied to the sprite pixels.
+`public/satoshi/` contains the original transparent 48×48 neutral, joyful, and rowdy masters from Bitcoin’s standalone `ratel-satoshi-assets-v1` handoff. These master files are served directly; CSS displays them at integer multiples with `image-rendering: pixelated` (336px desktop, 240px mobile). No smoothing, rotation, saturation filter, baked food, baked shadow, merchant mark, or required animation is applied to the sprite pixels.
 
 Native SHA-256 values, independently checked after downloading the handoff ZIP:
 
@@ -26,7 +26,7 @@ The client uses exactly this precedence:
 2. **Joyful** for a cub with `pet.mood === "joyful"`.
 3. **Neutral** for all remaining cub states, including hungry/content and no initial meal.
 
-Food remains a separate den layer. The sprite changes only when committed world state selects a different asset. Browser tests exercise neutral on initial load, joyful after both an HTTP action and an SSE-delivered visitor action, and rowdy after twelve connected blocks.
+Food remains a separate den layer. The sprite changes only when committed world state selects a different asset. Browser tests exercise neutral on initial load, joyful after four direct Play actions and an SSE-delivered visitor action, and rowdy after twelve connected blocks.
 
 ## Scope and verification
 

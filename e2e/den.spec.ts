@@ -41,6 +41,12 @@ test("desktop meal, play, decoration, and inspected production render", async ({
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page).toHaveTitle(/Ratel/);
+  await expect(page.getByRole("heading", { name: "Satoshi’s little world.", exact: true })).toBeVisible();
+  await page.getByText("How meals arrive", { exact: true }).click();
+  await expect(page.locator("#block-hash")).toBeVisible();
+  await expect(page.locator("#observed-at")).toContainText("Observed");
+  await page.getByText("How meals arrive", { exact: true }).click();
+  await expect(page.locator(".meal-details")).not.toHaveAttribute("open", "");
   await expect(page.locator("#badger")).toBeVisible();
   await expect(page.locator("#badger")).toHaveAttribute("src", "/satoshi/satoshi-neutral-48.png");
   await page.locator("#badger").evaluate((image: HTMLImageElement) => image.decode());
@@ -48,7 +54,7 @@ test("desktop meal, play, decoration, and inspected production render", async ({
   await expect(page.locator("#block-height")).toHaveText("#101");
   await expect(page.locator("#food-name")).toHaveText("Berry bowl");
   for (const joy of [50, 60, 70, 80]) {
-    await page.getByRole("button", { name: /Play with the badger/ }).click();
+    await page.getByRole("button", { name: /Play with Satoshi/ }).click();
     await expect(page.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
   }
   await expect(page.locator("#mood-label")).toHaveText("JOYFUL");
@@ -70,7 +76,7 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await expect(a.locator("#block-height")).toHaveText("#101");
   await expect(b.locator("#joy-label")).toHaveText("JOY 40/100");
   for (const joy of [50, 60, 70, 80]) {
-    await a.getByRole("button", { name: /Play with the badger/ }).click();
+    await a.getByRole("button", { name: /Play with Satoshi/ }).click();
     await expect(a.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
   }
   await expect(b.locator("#joy-label")).toHaveText("JOY 80/100");
@@ -82,7 +88,7 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await expect(b.locator('[data-slot="wall"] [data-item="badger-poster"]')).toBeDisabled();
   await b.screenshot({ path: "artifacts/second-visitor.png", fullPage: true });
 
-  await b.getByRole("button", { name: /Play with the badger/ }).click();
+  await b.getByRole("button", { name: /Play with Satoshi/ }).click();
   await expect(a.locator("#joy-label")).toHaveText("JOY 90/100");
   await first.close();
   await second.close();
@@ -106,7 +112,7 @@ test("the actual browser SSE connection reconnects after the server drops its so
     app.server.closeAllConnections();
     await reconnect;
     await other.goto("http://127.0.0.1:3102/");
-    await other.getByRole("button", { name: /Play with the badger/ }).click();
+    await other.getByRole("button", { name: /Play with Satoshi/ }).click();
     await expect(page.locator("#joy-label")).toHaveText("JOY 50/100");
   } finally {
     await visitor.close();
@@ -130,7 +136,7 @@ test("a committed new block feeds live and twelve blocks evolve the cub", async 
     await expect(page.locator("#food-name")).toHaveText("Warm porridge");
     await expect(page.locator("#meal-count")).toHaveText("3");
     for (const joy of [50, 60, 70, 80]) {
-      await page.getByRole("button", { name: /Play with the badger/ }).click();
+      await page.getByRole("button", { name: /Play with Satoshi/ }).click();
       await expect(page.locator("#joy-label")).toHaveText(`JOY ${joy}/100`);
     }
     await expect(page.locator("#mood-label")).toHaveText("JOYFUL");
