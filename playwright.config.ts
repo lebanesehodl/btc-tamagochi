@@ -21,6 +21,7 @@ export default defineConfig({
       DATABASE_URL: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
       BLOCK_API_BASE_URL: "https://blockstream.info/api",
       DISABLE_BLOCK_WORKER: "true",
+      DISABLE_STORY_WORKER: "true",
       MODERATOR_TOKEN: "local-browser-test-moderator",
       PORT: "3100",
       NODE_ENV: "test",

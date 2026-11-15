@@ -3,6 +3,7 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { DEN_SLOTS, type ActionRequest, type DenSlot } from "../shared/world.ts";
+import { TRIGGER_FAMILIES, type TriggerFamily } from "../shared/story.ts";
 import type { AppConfig } from "./config.ts";
 import { ActionRateLimiter } from "./rate-limit.ts";
 import { hashSessionToken, newSessionToken, requireSameOrigin, sessionToken, setSessionCookie, validModeratorToken } from "./security.ts";
@@ -42,6 +43,18 @@ async function ensureSession(request: FastifyRequest, reply: FastifyReply, repos
 function parseAction(body: unknown): ActionRequest {
   if (!body || typeof body !== "object" || !("kind" in body)) throw new HttpError(400, "Action body is invalid");
   if (body.kind === "play" && Object.keys(body).length === 1) return { kind: "play" };
+  if ((body.kind === "story-care" || body.kind === "story-dismiss") && Object.keys(body).length === 2) {
+    const { episodeId } = body as Record<string, unknown>;
+    if (typeof episodeId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(episodeId)) {
+      throw new HttpError(400, "Story episode is invalid");
+    }
+    return { kind: body.kind, episodeId: episodeId.toLowerCase() };
+  }
+  if (body.kind === "story-demo" && Object.keys(body).length === 2) {
+    const { family } = body as Record<string, unknown>;
+    if (typeof family !== "string" || !TRIGGER_FAMILIES.includes(family as TriggerFamily)) throw new HttpError(400, "Demo story is invalid");
+    return { kind: "story-demo", family: family as TriggerFamily };
+  }
   if (body.kind === "decorate") {
     const { slot, itemId, expectedVersion } = body as Record<string, unknown>;
     if (typeof slot !== "string" || !DEN_SLOTS.includes(slot as DenSlot) || typeof itemId !== "string" || itemId.length > 64 || !Number.isSafeInteger(expectedVersion)) {
@@ -62,7 +75,7 @@ function idempotencyKey(request: FastifyRequest): string {
 
 export async function buildApp(config: AppConfig, pool: Pool, options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: 16 * 1024, logger: false, trustProxy: config.production, forceCloseConnections: true });
-  const repository = options.repository ?? new WorldRepository(pool);
+  const repository = options.repository ?? new WorldRepository(pool, 1000, config.storyDemo === true);
   const rateLimiter = options.rateLimiter ?? new ActionRateLimiter();
 
   app.addHook("onSend", async (_request, reply) => {
@@ -94,6 +107,7 @@ export async function buildApp(config: AppConfig, pool: Pool, options: BuildAppO
       throw new HttpError(429, "Too many actions; give the badger a short breather");
     }
     const action = parseAction(request.body);
+    if (action.kind === "story-demo" && config.storyDemo !== true) throw new HttpError(404, "Demo mode is not enabled");
     const result = await repository.applyAction(sessionId, idempotencyKey(request), action);
     return result;
   });

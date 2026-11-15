@@ -1,6 +1,6 @@
 # Web MVP architecture
 
-One Node.js application serves the client, snapshot/action HTTP APIs, SSE updates, and a single-active block worker. PostgreSQL is authoritative.
+One Node.js application serves the client, snapshot/action HTTP APIs, SSE updates, a single-active block worker, and a story evaluator. PostgreSQL is authoritative.
 
 ## Chain ingestion
 
@@ -16,6 +16,8 @@ Provider data is labeled provider-reported. HTTPS and structural checks do not i
 
 Pet progression, block effects, community actions, den state, and a monotonically increasing world revision commit transactionally with changelog rows. Block effects and community actions are separate, so reorgs do not undo decoration or play. Growth is capped at the 12-block evolution milestone.
 
+Story episodes, price-zone continuity, mature hash candidates, UTC delivery records, community actions, den state, and world revisions use the same transactional changelog discipline. One evaluator consumes inputs under the world lock; network reads happen before that lock. Episode actions retain idempotency and free negative-story care. Demo scenes are separately flagged and cannot masquerade as live causes. Exact rules and provider limits are in `docs/stories-v1.md`.
+
 Actions use required idempotency keys and transactional slot/version checks. Commit order obtains the world lock consistently to avoid moderator/action lock inversion. Decorations accept catalog IDs only. A visitor can replace their own current contribution; another visitor cannot overwrite it. Moderators can reverse only the action that still owns its slot, so a stale reversal cannot delete newer work.
 
 Anonymous sessions store SHA-256 hashes of 32-byte opaque tokens. Cookies are HttpOnly, SameSite=Lax, and Secure in production. Mutating routes require same-origin/cross-site checks and exact JSON content types. Moderation uses a separate server-only bearer secret and timing-safe comparison. In-memory action budgets are deliberately documented as basic abuse controls rather than durable identity.
@@ -30,7 +32,7 @@ Render runs one public Node service binding `0.0.0.0` and `process.env.PORT`, wi
 
 Render free services sleep after inactivity and free PostgreSQL expires after 30 days. Sleep pauses observation temporarily; restart reconciles actual provider blocks in bounded batches rather than fabricating elapsed-time meals. These limits make free hosting a playtest, not permanent community hosting. Paid changes require separate OP approval.
 
-A future BWATCH client can consume a versioned read-only snapshot containing pet appearance, den theme, world revision, last processed height/hash, provider/source, observation time, and sync status. No watch credentials or writes are part of this MVP.
+A future BWATCH client could consume a versioned read-only snapshot containing pet appearance, den theme, world revision, last processed height/hash, provider/source, observation time, sync status, and story state. No watch story version, credentials, or writes are part of this MVP.
 
 ## Acceptance evidence and remaining boundaries
 

@@ -89,6 +89,7 @@ export class BlockWorker implements WorkerLike {
       return;
     }
     const known = await this.repository.knownActiveChain();
+    const storyWasLive = (await this.repository.snapshot()).chain.syncStatus === "synced";
     const transition = await reconcileChain(this.source, known);
     if (transition.disconnect.length === 0 && transition.connect.length === 0) {
       await this.repository.markHealthy();
@@ -100,6 +101,7 @@ export class BlockWorker implements WorkerLike {
       connect,
       observedAt: new Date().toISOString(),
       syncStatus: "synced",
+      storyLive: storyWasLive && transition.disconnect.length === 0 && transition.connect.length === 1,
     }, this.lease);
   }
 

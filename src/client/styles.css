@@ -1,6 +1,7 @@
 @import url("./tokens.css");
 
 * { box-sizing: border-box; }
+.hidden { display: none !important; }
 html { color-scheme: light; background: var(--paper); }
 body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -66,6 +67,19 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 #growth-fill::-moz-progress-bar { background: #83b391; border-radius: 8px; transition: width .35s; }
 #growth-label, .care-panel p { color: var(--muted); font-size: 12px; line-height: 1.65; }
 .pantry-section h2 { font-size: 27px; font-weight: 800; letter-spacing: -.035em; margin: 0 0 8px; }
+.story-section { grid-column: 1 / -1; background: #f7ebda; border-bottom: 1px solid var(--line); }
+.story-section.story-price-up { background: #e4efdc; }
+.story-section.story-hash-mischief { background: var(--lilac); }
+.story-section.is-demo { outline: 3px dashed var(--accent); outline-offset: -5px; }
+.story-section h2 { margin: 0 0 8px; font-size: 27px; letter-spacing: -.03em; }
+.story-fact { font: 11px/1.6 "Courier New", ui-monospace, monospace; color: var(--forest) !important; overflow-wrap: anywhere; }
+.story-sub { color: var(--forest) !important; font-weight: 700; }
+.story-action { border: 1px solid var(--ink); border-radius: 9px; background: var(--panel); color: var(--ink); padding: 11px 14px; font-weight: 700; cursor: pointer; }
+.story-doctor, .story-expiry { margin-bottom: 0; font-size: 11px !important; }
+.demo-stories { margin-top: 24px; padding: 18px; border: 2px dashed var(--accent); border-radius: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; color: var(--muted); font-size: 12px; }
+.demo-stories strong { color: var(--danger); font: 700 11px "Courier New", ui-monospace, monospace; }
+.demo-stories div { display: flex; gap: 7px; }
+.demo-stories button { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--forest); padding: 8px 12px; cursor: pointer; }
 .decoration-controls { display: grid; gap: 13px; margin-top: 18px; }
 .slot-control { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .slot-control > span { grid-column: 1 / -1; color: var(--ink); font-size: 12px; font-weight: 650; text-transform: capitalize; }
@@ -94,6 +108,7 @@ footer { max-width: 1360px; margin: auto; padding: 25px 36px 40px; display: flex
   .care-panel { grid-template-columns: 1fr 1fr; }
   .care-panel section { border-bottom: 1px solid var(--line); }
   .care-panel .decorate-section { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
+  .care-panel .story-section { grid-column: 1 / -1; }
   .den-scene { min-height: 430px; }
 }
 @media (max-width: 580px) {
