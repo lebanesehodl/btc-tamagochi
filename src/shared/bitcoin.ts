@@ -22,6 +22,8 @@ export interface BlockMeal {
   blockHash: string;
   height: number;
   foodId: string;
+  /** Persist the menu version alongside effects; published menus must not be edited in place. */
+  pantryVersion: string;
 }
 
 export interface ChainTransition {
