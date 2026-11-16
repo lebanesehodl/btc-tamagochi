@@ -69,6 +69,27 @@ test("desktop meal, play, decoration, and inspected production render", async ({
   expect(errors).toEqual([]);
 });
 
+test("Genesis reads as a whitepaper and the floor seam stays behind Satoshi", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#block-height")).toHaveText("#101");
+  await page.locator('[data-slot="wall"] [data-item="genesis-poster"]').click();
+  await expect(page.locator("#den-wall")).toHaveClass(/genesis-poster/);
+
+  const topAtSeam = await page.evaluate(() => {
+    const scene = document.getElementById("den-scene")!.getBoundingClientRect();
+    const seam = document.querySelector(".den-floor-line")!.getBoundingClientRect();
+    const top = document.elementsFromPoint(scene.left + scene.width / 2, seam.top + seam.height / 2)[0];
+    return top?.id || top?.className;
+  });
+  expect(topAtSeam).toBe("badger");
+  expect(await page.locator("#den-wall").evaluate((poster) => getComputedStyle(poster, "::before").content)).toBe('"BITCOIN"');
+  await page.screenshot({ path: "artifacts/decor-desktop.png", fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "artifacts/decor-mobile.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
 test("a second anonymous visitor receives live changes", async ({ browser }) => {
   const first = await browser.newContext();
   const second = await browser.newContext();

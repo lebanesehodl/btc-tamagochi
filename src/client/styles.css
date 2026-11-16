@@ -33,8 +33,8 @@ h1 { font-weight: 850; font-size: clamp(44px, 5.6vw, 74px); line-height: 1.01; l
 .den-scene { position: relative; flex: 1; min-height: 510px; overflow: hidden; background: linear-gradient(var(--mint) 0 65%, var(--peach) 65% 100%); }
 .den-scene::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at center, #fffdf580, transparent 70%); pointer-events: none; }
 .den-grain { position: absolute; inset: 0; opacity: .45; background-image: repeating-linear-gradient(0deg, transparent 0 15px, #405a4b08 16px), repeating-linear-gradient(90deg, transparent 0 47px, #405a4b05 48px); }
-.den-floor-line { position: absolute; left: 0; right: 0; top: 65%; height: 12px; background: #b1c1a1; border-top: 2px solid #809378; }
-.badger { position: absolute; width: 336px; height: 336px; left: 50%; bottom: 17%; transform: translateX(-50%); image-rendering: pixelated; filter: drop-shadow(6px 6px 0 #24362f24); }
+.den-floor-line { position: absolute; z-index: 0; left: 0; right: 0; top: 65%; height: 12px; background: #b1c1a1; border-top: 2px solid #809378; }
+.badger { position: absolute; z-index: 1; width: 336px; height: 336px; left: 50%; bottom: 17%; transform: translateX(-50%); image-rendering: pixelated; filter: drop-shadow(6px 6px 0 #24362f24); }
 .badger.eating { animation: badger-chomp .25s steps(2) 4; }
 @keyframes badger-chomp { 50% { transform: translateX(-50%) translateY(6px); } }
 .meal-bubble { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 3px 3px 0 #24362f0a; padding: 11px 16px; font: 11px "Courier New", ui-monospace, monospace; max-width: 80%; text-align: center; z-index: 3; }
@@ -79,8 +79,10 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .den-window::before { content: ""; position: absolute; right: 16px; top: 22px; width: 32px; height: 32px; border-radius: 50%; background: #ffe5ad; }
 .den-window::after { content: ""; position: absolute; left: calc(50% - 3px); top: 0; width: 6px; height: 100%; background: #f6f3e9; }
 .den-decoration { position: absolute; z-index: 1; image-rendering: pixelated; }
-.decoration-wall { top: 80px; left: 34px; width: 58px; height: 78px; }
-.decoration-wall.genesis-poster { border: 5px solid #976a51; border-radius: 4px; background: linear-gradient(160deg, #edab91 0 44%, #d38b72 44%); box-shadow: inset 0 0 0 2px #f7d9c8; }
+.decoration-wall { top: 80px; left: 34px; width: 70px; height: 92px; }
+.decoration-wall.genesis-poster { overflow: hidden; border: 5px solid #976a51; border-radius: 4px; background: #fffdf5; box-shadow: inset 0 0 0 2px #f7f1df; }
+.decoration-wall.genesis-poster::before { content: "BITCOIN"; position: absolute; top: 7px; left: 5px; right: 5px; padding-bottom: 6px; border-bottom: 1px solid #d8d2c4; color: #443d33; font: 700 6px/1 "Courier New", monospace; letter-spacing: .12em; text-align: center; }
+.decoration-wall.genesis-poster::after { content: "₿"; position: absolute; top: 17px; left: 0; right: 0; height: 58px; background: repeating-linear-gradient(to bottom, #9b9588 0 1px, transparent 1px 5px) center bottom 4px / 48px 21px no-repeat; color: #f7931a; font: 700 29px/29px Georgia, serif; text-align: center; }
 .decoration-wall.badger-poster { border: 5px solid #687d68; border-radius: 4px; background: repeating-linear-gradient(45deg, #f4efdf 0 10px, #b9c7af 10px 20px); }
 .decoration-floor { left: 15%; bottom: 10%; width: 70%; height: 12%; transform: skewX(-24deg); }
 .decoration-floor.orange-rug { background: #d99a7c; border: 4px solid #efb398; border-radius: 7px; }
