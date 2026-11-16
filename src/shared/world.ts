@@ -1,3 +1,5 @@
+import type { StoryView, TriggerFamily } from "./story.ts";
+
 export const EVOLUTION_AFTER_BLOCKS = 12;
 export const DEN_SLOTS = ["wall", "floor", "corner"] as const;
 export type DenSlot = (typeof DEN_SLOTS)[number];
@@ -43,6 +45,7 @@ export interface WorldSnapshot {
     lastError: string | null;
     trust: "provider-reported";
   };
+  story: StoryView;
 }
 
 export interface AppliedBlock {
@@ -67,11 +70,15 @@ export interface WorldTransition {
   connect: AppliedBlock[];
   observedAt: string;
   syncStatus: WorldSnapshot["chain"]["syncStatus"];
+  /** Only a single live tip extension can arm new hash stories; catch-up and replays stay quiet. */
+  storyLive?: boolean;
 }
 
 export type ActionRequest =
   | { kind: "play" }
-  | { kind: "decorate"; slot: DenSlot; itemId: string; expectedVersion: number };
+  | { kind: "decorate"; slot: DenSlot; itemId: string; expectedVersion: number }
+  | { kind: "story-care" | "story-dismiss"; episodeId: string }
+  | { kind: "story-demo"; family: TriggerFamily };
 
 export interface ActionResponse {
   actionId: string;

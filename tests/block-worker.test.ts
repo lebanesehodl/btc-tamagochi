@@ -2,11 +2,13 @@ import crypto from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import type { BlockMetadata, BlockSource } from "../src/shared/bitcoin.ts";
+import { selectsHashMischief } from "../src/server/story/selector.ts";
 import { BlockWorker } from "../src/server/block-worker.ts";
 import type { AppConfig } from "../src/server/config.ts";
 import { migrate } from "../src/server/migrate.ts";
 import { WorldRepository } from "../src/server/world/repository.ts";
 import { BitcoinDataError } from "../src/server/bitcoin/index.ts";
+import { acquireWorkerLease, type WorkerLease } from "../src/server/worker-lease.ts";
 
 const hash = (name: string) => crypto.createHash("sha256").update(name).digest("hex");
 const block = (height: number, name = `block-${height}`): BlockMetadata => ({
@@ -34,12 +36,29 @@ const config: AppConfig = { port: 3000, databaseUrl: "", blockApiBaseUrl: "https
 
 beforeAll(async () => { await migrate(pool); });
 beforeEach(async () => {
-  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases, story_hash_candidates, story_episodes RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM den_slots");
   await pool.query("UPDATE world_state SET world_revision = 1, chain_height = NULL, chain_hash = NULL, hatched_height = NULL, joy = 40, source = 'https://blockstream.info/api', sync_status = 'starting', last_error = NULL, observed_at = NULL");
+  await pool.query("UPDATE story_state SET activation_height = NULL, live_boundary_height = NULL, price_zone = 'baseline-required', price_change = NULL, price_usd = NULL, price_source_updated_at = NULL, price_received_at = NULL");
   await pool.query("INSERT INTO den_slots(slot) VALUES ('wall'),('floor'),('corner')");
 });
 afterAll(async () => { await pool.end(); });
+
+async function seedPendingPreShutdownHash(): Promise<{ source: FakeSource; beforeRevision: number }> {
+  const source = new FakeSource();
+  const original = new BlockWorker(repository, config, source);
+  await original.runOnce();
+  let selected = block(101, "restart-selected-0");
+  for (let attempt = 1; !selectsHashMischief(selected.id); attempt++) selected = block(101, `restart-selected-${attempt}`);
+  const second = { ...block(102), previousblockhash: selected.id };
+  const third = { ...block(103), previousblockhash: second.id };
+  for (const next of [selected, second, third]) {
+    source.blocks.set(next.height, next);
+    source.tip = next.height;
+    await original.runOnce();
+  }
+  return { source, beforeRevision: (await repository.snapshot()).revision };
+}
 
 it("retains the uncredited hatch anchor through first-meal and multi-meal forks and canonical replay", async () => {
   const source = new FakeSource();
@@ -102,6 +121,87 @@ it("retains the uncredited hatch anchor through first-meal and multi-meal forks 
   const duplicateReplay = await repository.snapshot();
   expect(duplicateReplay.pet).toEqual(replayedMulti.pet);
   expect(duplicateReplay.revision).toBe(replayedMulti.revision);
+});
+
+it("establishes a fresh story boundary on restart with persisted synced state and an unchanged tip", async () => {
+  const { source, beforeRevision } = await seedPendingPreShutdownHash();
+  const before = await repository.snapshot();
+  expect(before.chain.syncStatus).toBe("synced");
+  expect(Number((await pool.query("SELECT live_boundary_height FROM story_state")).rows[0].live_boundary_height)).toBe(100);
+  expect((await pool.query("SELECT status FROM story_hash_candidates WHERE height = 101")).rows[0].status).toBe("pending");
+
+  // The old in-process fixture keeps its lease after runOnce(); a real restart takes over only after fencing expires.
+  await pool.query("UPDATE worker_leases SET expires_at = now() - interval '1 second'");
+  const restarted = new BlockWorker(repository, config, source);
+  restarted.start();
+  try {
+    await expect.poll(async () => Number((await pool.query("SELECT live_boundary_height FROM story_state")).rows[0].live_boundary_height), { timeout: 5000 }).toBe(103);
+  } finally {
+    await restarted.stop();
+  }
+  const after = await repository.evaluateStory();
+  expect(after.revision).toBe(beforeRevision + 1);
+  expect(after.story.episode).toBeNull();
+  expect((await pool.query("SELECT status FROM story_hash_candidates WHERE height = 101")).rows[0].status).toBe("consumed");
+
+  const priorLease = await pool.query("SELECT owner, fencing_token FROM worker_leases WHERE name = 'blocks'");
+  const staleLease = { owner: priorLease.rows[0].owner as string, fencingToken: Number(priorLease.rows[0].fencing_token) };
+  await pool.query("UPDATE worker_leases SET expires_at = now() - interval '1 second'");
+  await expect(repository.markHealthy(new Date().toISOString(), true, staleLease)).rejects.toMatchObject({ statusCode: 409 });
+  expect((await repository.snapshot()).revision).toBe(after.revision);
+  expect(Number((await pool.query("SELECT live_boundary_height FROM story_state")).rows[0].live_boundary_height)).toBe(103);
+});
+
+it("blocks mature hash activation while a new worker is still waiting for startup reconciliation", async () => {
+  await seedPendingPreShutdownHash();
+  // Construction closes the shared repository gate before start() yields to the story worker.
+  new BlockWorker(repository, config, new FakeSource());
+  const gated = await repository.evaluateStory({ price: null });
+  expect(gated.story.episode).toBeNull();
+  expect(gated.chain.syncStatus).toBe("synced");
+  expect((await pool.query("SELECT status FROM story_hash_candidates WHERE height = 101")).rows[0].status).toBe("consumed");
+  expect((await pool.query("SELECT price_zone FROM story_state")).rows[0].price_zone).toBe("baseline-required");
+});
+
+it.each(["bootstrap", "no-op", "connected-block"] as const)("fails closed on %s if renewal loses the lease during a provider read", async (mode) => {
+  const source = new FakeSource();
+  const readTip = source.getTipHash.bind(source);
+  let enteredRead!: () => void;
+  let releaseRead!: () => void;
+  const entered = new Promise<void>((resolve) => { enteredRead = resolve; });
+  const held = new Promise<void>((resolve) => { releaseRead = resolve; });
+  let blockReads = false;
+  source.getTipHash = async () => {
+    if (blockReads) { enteredRead(); await held; }
+    return readTip();
+  };
+  const worker = new BlockWorker(repository, config, source);
+  if (mode !== "bootstrap") await worker.runOnce();
+  if (mode === "connected-block") {
+    source.blocks.set(101, block(101));
+    source.tip = 101;
+  }
+  await repository.markDegraded("fixture pause", "paused");
+  const before = await repository.snapshot();
+
+  blockReads = true;
+  const running = worker.runOnce();
+  await entered;
+  await pool.query("UPDATE worker_leases SET expires_at = now() - interval '1 second'");
+  expect(await acquireWorkerLease(pool, crypto.randomUUID())).not.toBeNull();
+  // This is the renewal outcome under review: mutable worker ownership is now absent.
+  (worker as unknown as { lease: WorkerLease | null }).lease = null;
+  releaseRead();
+  await expect(running).rejects.toMatchObject({ statusCode: 409 });
+
+  const after = await repository.snapshot();
+  expect(after.chain.syncStatus).toBe("paused");
+  expect(after.revision).toBe(before.revision);
+  expect(after.chain.height).toBe(mode === "bootstrap" ? null : 100);
+  expect(after.pet.meals).toBe(0);
+  expect((await pool.query("SELECT live_boundary_height FROM story_state")).rows[0].live_boundary_height)
+    .toBe(mode === "bootstrap" ? null : "100");
+  expect((await pool.query("SELECT count(*)::int AS n FROM block_journal WHERE height = 101")).rows[0].n).toBe(0);
 });
 
 it("evolves after twelve credited blocks from an uncredited baseline, deduplicates polls, and replays a reorg", async () => {

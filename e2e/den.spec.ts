@@ -26,9 +26,10 @@ function applied(height: number): AppliedBlock {
 
 test.beforeEach(async () => {
   fs.mkdirSync("artifacts", { recursive: true });
-  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases, story_hash_candidates, story_episodes RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM den_slots");
   await pool.query("UPDATE world_state SET world_revision = 1, chain_height = NULL, chain_hash = NULL, hatched_height = NULL, joy = 40, source = 'https://blockstream.info/api', sync_status = 'starting', last_error = NULL, observed_at = NULL");
+  await pool.query("UPDATE story_state SET activation_height = NULL, live_boundary_height = NULL, price_zone = 'baseline-required', price_change = NULL, price_usd = NULL, price_source_updated_at = NULL, price_received_at = NULL");
   await pool.query("INSERT INTO den_slots(slot) VALUES ('wall'),('floor'),('corner')");
   await repository.applyTransition({ disconnect: [], connect: [{ ...applied(100), active: false }], observedAt: new Date("2026-01-01T00:00:00Z").toISOString(), syncStatus: "synced" });
   await repository.applyTransition({ disconnect: [], connect: [applied(101)], observedAt: new Date("2026-01-01T00:10:00Z").toISOString(), syncStatus: "synced" });
@@ -96,6 +97,123 @@ test("a second anonymous visitor receives live changes", async ({ browser }) => 
   await expect(a.locator("#joy-label")).toHaveText("JOY 90/100");
   await first.close();
   await second.close();
+});
+
+test("a failed SSE connection falls back to world refreshes", async ({ browser }) => {
+  const first = await browser.newContext();
+  const second = await browser.newContext();
+  const a = await first.newPage();
+  const b = await second.newPage();
+  const errors: string[] = [];
+  b.on("pageerror", (error) => errors.push(error.message));
+  await b.route("**/api/stream**", (route) => route.abort("failed"));
+  await Promise.all([a.goto("/"), b.goto("/")]);
+  await expect(b.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+  await a.getByRole("button", { name: /Play with Satoshi/ }).click();
+  await expect(b.locator("#joy-label")).toHaveText("JOY 50/100");
+  await expect(b.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+  await b.getByRole("button", { name: /Play with Satoshi/ }).click();
+  await expect(a.locator("#joy-label")).toHaveText("JOY 60/100");
+  await expect(b.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+  await b.setViewportSize({ width: 390, height: 844 });
+  await b.screenshot({ path: "artifacts/sse-refresh-fallback-mobile.png", fullPage: true });
+  expect(await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+  await first.close();
+  await second.close();
+});
+
+test("a recovered SSE connection ignores an older failed fallback read", async ({ page }) => {
+  let blockSse = true;
+  let holdFallback = false;
+  let fallbackStarted!: () => void;
+  let fallbackFailed!: () => void;
+  let releaseFallback!: () => void;
+  const started = new Promise<void>((resolve) => { fallbackStarted = resolve; });
+  const failed = new Promise<void>((resolve) => { fallbackFailed = resolve; });
+  const app = await buildApp({
+    port: 3112,
+    databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true, disableStoryWorker: true,
+  }, pool);
+  app.addHook("onRequest", async (request, reply) => {
+    if (blockSse && request.url.startsWith("/api/stream")) {
+      reply.hijack();
+      reply.raw.destroy();
+      return reply;
+    }
+    if (holdFallback && request.method === "GET" && request.url === "/api/world") {
+      fallbackStarted();
+      await new Promise<void>((resolve) => { releaseFallback = resolve; });
+      return reply.code(503).send({ error: "controlled delayed fallback failure" });
+    }
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    if (request.url === "/api/world" && reply.statusCode === 503) fallbackFailed();
+  });
+  try {
+    await app.listen({ host: "127.0.0.1", port: 3112 });
+    await page.goto("http://127.0.0.1:3112/");
+    await expect(page.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+    holdFallback = true;
+    await started;
+    blockSse = false;
+    await expect(page.locator("#connection-label")).toHaveText("In step with the chain");
+    releaseFallback();
+    await failed;
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.locator("#connection-label")).toHaveText("In step with the chain");
+  } finally {
+    blockSse = false;
+    releaseFallback?.();
+    await page.close();
+    await app.close();
+  }
+});
+
+test("fallback refreshes keep only one request in flight", async ({ page }) => {
+  let holdFallback = false;
+  let firstFallbackStarted!: () => void;
+  const started = new Promise<void>((resolve) => { firstFallbackStarted = resolve; });
+  const releases: Array<() => void> = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const app = await buildApp({
+    port: 3113,
+    databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true, disableStoryWorker: true,
+  }, pool);
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url.startsWith("/api/stream")) {
+      reply.hijack();
+      reply.raw.destroy();
+      return reply;
+    }
+    if (holdFallback && request.method === "GET" && request.url === "/api/world") {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      firstFallbackStarted();
+      await new Promise<void>((resolve) => { releases.push(resolve); });
+      inFlight -= 1;
+    }
+  });
+  try {
+    await app.listen({ host: "127.0.0.1", port: 3113 });
+    await page.goto("http://127.0.0.1:3113/");
+    await expect(page.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+    holdFallback = true;
+    await started;
+    await page.waitForTimeout(6500);
+    expect(maxInFlight).toBe(1);
+    expect(releases).toHaveLength(1);
+  } finally {
+    holdFallback = false;
+    for (const release of releases) release();
+    await page.close();
+    await app.close();
+  }
 });
 
 test("paused, degraded, and catching-up status survive actual SSE open and reconnect", async ({ page }) => {

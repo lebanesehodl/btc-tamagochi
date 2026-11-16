@@ -53,6 +53,19 @@
             <p id="growth-label">Growth starts with the first block.</p>
           </section>
 
+          <section id="story-section" class="story-section hidden" aria-live="polite">
+            <div class="section-heading"><span>DEN STORY</span><span id="story-state">—</span></div>
+            <p id="story-fact" class="story-fact"></p>
+            <h2 id="story-title"></h2>
+            <p id="story-sub" class="story-sub"></p>
+            <p id="story-arrival"></p>
+            <p id="story-mood"></p>
+            <p id="story-status"></p>
+            <button id="story-action" class="story-action" type="button"></button>
+            <p id="story-doctor" class="story-doctor"></p>
+            <p id="story-expiry" class="story-expiry"></p>
+          </section>
+
           <section class="pantry-section">
             <div class="section-heading"><span>IN THE BOWL</span><span>BLOCK-FED</span></div>
             <div class="block-card" aria-label="Latest meal delivered by a Bitcoin block">
@@ -81,9 +94,14 @@
           </section>
         </aside>
       </section>
+      <section id="demo-stories" class="demo-stories hidden" aria-label="Demo story scenarios">
+        <strong>DEMO — SIMULATED, NOT LIVE</strong>
+        <span>No real quote or block caused these scenes.</span>
+        <div><button type="button" data-demo-family="price-down">Fiat story</button><button type="button" data-demo-family="price-up">Steak story</button><button type="button" data-demo-family="hash-mischief">Glare story</button></div>
+      </section>
     </main>
 
-    <footer><span>Ratel is a community project. Not affiliated with any business.</span><span>Block data comes from a public provider. We don't verify it ourselves.</span></footer>
+    <footer><span>Ratel is a community project. Not affiliated with any business.</span><span>Block data comes from a public provider. We don't verify it ourselves.</span><span>Badger is a cartoon. Nothing here is health advice or financial advice.</span></footer>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

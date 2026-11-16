@@ -6,6 +6,8 @@ export interface AppConfig {
   moderatorToken: string | null;
   production: boolean;
   disableBlockWorker: boolean;
+  disableStoryWorker?: boolean;
+  storyDemo?: boolean;
 }
 
 function positiveInteger(name: string, value: string | undefined, fallback: number): number {
@@ -26,5 +28,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     moderatorToken: env.MODERATOR_TOKEN || null,
     production: env.NODE_ENV === "production",
     disableBlockWorker: env.DISABLE_BLOCK_WORKER === "true",
+    disableStoryWorker: env.DISABLE_STORY_WORKER === "true",
+    storyDemo: env.STORY_DEMO === "true",
   };
 }

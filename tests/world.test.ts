@@ -27,9 +27,10 @@ function transition(connect: AppliedBlock[], disconnect: string[] = []): WorldTr
 }
 
 async function reset(): Promise<void> {
-  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases, story_hash_candidates, story_episodes RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM den_slots");
   await pool.query("UPDATE world_state SET world_revision = 1, chain_height = NULL, chain_hash = NULL, hatched_height = NULL, joy = 40, source = 'https://blockstream.info/api', sync_status = 'starting', last_error = NULL, observed_at = NULL");
+  await pool.query("UPDATE story_state SET activation_height = NULL, live_boundary_height = NULL, price_zone = 'baseline-required', price_change = NULL, price_usd = NULL, price_source_updated_at = NULL, price_received_at = NULL");
   await pool.query("INSERT INTO den_slots(slot) VALUES ('wall'),('floor'),('corner')");
 }
 
@@ -133,7 +134,8 @@ describe("community actions", () => {
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     const winner = results.find((result) => result.status === "fulfilled");
     if (winner?.status !== "fulfilled") throw new Error("No decoration was applied");
-    await expect(repository.applyAction(bob, crypto.randomUUID(), { kind: "decorate", slot: "wall", itemId: "badger-poster", expectedVersion: 1 })).rejects.toMatchObject({ statusCode: 409 });
+    const losingVisitor = results[0]?.status === "fulfilled" ? bob : alice;
+    await expect(repository.applyAction(losingVisitor, crypto.randomUUID(), { kind: "decorate", slot: "wall", itemId: "badger-poster", expectedVersion: 1 })).rejects.toMatchObject({ statusCode: 409 });
     await expect(repository.applyAction(alice, crypto.randomUUID(), { ...action, expectedVersion: 0 })).rejects.toMatchObject({ statusCode: 409 });
   });
 

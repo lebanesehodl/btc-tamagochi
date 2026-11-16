@@ -9,12 +9,53 @@ import { WorldRepository } from "../src/server/world/repository.ts";
 const pool = new Pool({ connectionString: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi" });
 beforeAll(async () => {
   await migrate(pool);
-  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE world_events, moderation_audit, community_actions, block_journal, sessions, worker_leases, story_hash_candidates, story_episodes RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM den_slots");
   await pool.query("UPDATE world_state SET world_revision = 1, chain_height = NULL, chain_hash = NULL, hatched_height = NULL, joy = 40, sync_status = 'starting', last_error = NULL, observed_at = NULL");
+  await pool.query("UPDATE story_state SET activation_height = NULL, live_boundary_height = NULL, price_zone = 'baseline-required', price_change = NULL, price_usd = NULL, price_source_updated_at = NULL, price_received_at = NULL");
   await pool.query("INSERT INTO den_slots(slot) VALUES ('wall'),('floor'),('corner')");
 });
 afterAll(async () => { await pool.end(); });
+
+it("publishes a shared worker repository's committed mutation to a real SSE subscriber", async () => {
+  const repository = new WorldRepository(pool);
+  const session = await repository.ensureSession(crypto.createHash("sha256").update("sse-shared-worker").digest());
+  const before = await repository.snapshot();
+  const app = await buildApp({
+    port: 0, databaseUrl: "", blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  }, pool, { serveClient: false, repository });
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const port = (app.server.address() as AddressInfo).port;
+    const response = await fetch(`http://127.0.0.1:${port}/api/stream?after=${before.revision}`, { signal: AbortSignal.timeout(5000) });
+    reader = response.body!.getReader();
+    let text = new TextDecoder().decode((await reader.read()).value);
+    expect(text).toContain(": connected");
+    await repository.applyAction(session, crypto.randomUUID(), { kind: "play" });
+    while (!text.includes("event: world")) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      text += new TextDecoder().decode(chunk.value, { stream: true });
+    }
+    expect(text).toContain("event: world");
+    const line = text.split("\n").find((item) => item.startsWith("data: "));
+    expect(line).toBeDefined();
+    expect(JSON.parse(line!.slice(6)).pet.joy).toBe(before.pet.joy + 10);
+  } finally {
+    await reader?.cancel().catch(() => undefined);
+    await app.close();
+  }
+});
+
+it("rejects worker composition unless the app receives the same repository", async () => {
+  await expect(buildApp({
+    port: 0, databaseUrl: "", blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true,
+  }, pool, { serveClient: false, worker: { start() {}, async stop() {} } }))
+    .rejects.toThrow("shared WorldRepository");
+});
 
 it("returns a fresh snapshot over real SSE when requested history no longer exists", async () => {
   const writer = new WorldRepository(pool, 1);
