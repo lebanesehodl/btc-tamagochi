@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free
     numInstances: 1
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start
     healthCheckPath: /healthz
     envVars:
@@ -18,6 +18,10 @@ services:
         value: https://blockstream.info/api
       - key: DISABLE_BLOCK_WORKER
         value: "false"
+      - key: DISABLE_STORY_WORKER
+        value: "true"
+      - key: STORY_DEMO
+        value: "true"
       - key: MODERATOR_TOKEN
         generateValue: true
       - key: DATABASE_URL
