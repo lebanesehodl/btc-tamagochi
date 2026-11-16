@@ -123,6 +123,99 @@ test("a failed SSE connection falls back to world refreshes", async ({ browser }
   await second.close();
 });
 
+test("a recovered SSE connection ignores an older failed fallback read", async ({ page }) => {
+  let blockSse = true;
+  let holdFallback = false;
+  let fallbackStarted!: () => void;
+  let fallbackFailed!: () => void;
+  let releaseFallback!: () => void;
+  const started = new Promise<void>((resolve) => { fallbackStarted = resolve; });
+  const failed = new Promise<void>((resolve) => { fallbackFailed = resolve; });
+  const app = await buildApp({
+    port: 3112,
+    databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true, disableStoryWorker: true,
+  }, pool);
+  app.addHook("onRequest", async (request, reply) => {
+    if (blockSse && request.url.startsWith("/api/stream")) {
+      reply.hijack();
+      reply.raw.destroy();
+      return reply;
+    }
+    if (holdFallback && request.method === "GET" && request.url === "/api/world") {
+      fallbackStarted();
+      await new Promise<void>((resolve) => { releaseFallback = resolve; });
+      return reply.code(503).send({ error: "controlled delayed fallback failure" });
+    }
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    if (request.url === "/api/world" && reply.statusCode === 503) fallbackFailed();
+  });
+  try {
+    await app.listen({ host: "127.0.0.1", port: 3112 });
+    await page.goto("http://127.0.0.1:3112/");
+    await expect(page.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+    holdFallback = true;
+    await started;
+    blockSse = false;
+    await expect(page.locator("#connection-label")).toHaveText("In step with the chain");
+    releaseFallback();
+    await failed;
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.locator("#connection-label")).toHaveText("In step with the chain");
+  } finally {
+    blockSse = false;
+    releaseFallback?.();
+    await page.close();
+    await app.close();
+  }
+});
+
+test("fallback refreshes keep only one request in flight", async ({ page }) => {
+  let holdFallback = false;
+  let firstFallbackStarted!: () => void;
+  const started = new Promise<void>((resolve) => { firstFallbackStarted = resolve; });
+  const releases: Array<() => void> = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const app = await buildApp({
+    port: 3113,
+    databaseUrl: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/btc_tamagochi",
+    blockApiBaseUrl: "https://blockstream.info/api", pollIntervalMs: 60_000,
+    moderatorToken: null, production: false, disableBlockWorker: true, disableStoryWorker: true,
+  }, pool);
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url.startsWith("/api/stream")) {
+      reply.hijack();
+      reply.raw.destroy();
+      return reply;
+    }
+    if (holdFallback && request.method === "GET" && request.url === "/api/world") {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      firstFallbackStarted();
+      await new Promise<void>((resolve) => { releases.push(resolve); });
+      inFlight -= 1;
+    }
+  });
+  try {
+    await app.listen({ host: "127.0.0.1", port: 3113 });
+    await page.goto("http://127.0.0.1:3113/");
+    await expect(page.locator("#connection-label")).toHaveText("Live link unavailable. Refreshing the den.");
+    holdFallback = true;
+    await started;
+    await page.waitForTimeout(6500);
+    expect(maxInFlight).toBe(1);
+    expect(releases).toHaveLength(1);
+  } finally {
+    holdFallback = false;
+    for (const release of releases) release();
+    await page.close();
+    await app.close();
+  }
+});
+
 test("paused, degraded, and catching-up status survive actual SSE open and reconnect", async ({ page }) => {
   await page.addInitScript(() => {
     const tracked = window as typeof window & { __sseOpens: number };

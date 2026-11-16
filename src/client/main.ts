@@ -5,6 +5,7 @@ const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.ge
 let world: WorldSnapshot | null = null;
 let stream: EventSource | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let refreshInFlight = false;
 let streamUnavailable = false;
 let actionBusy = false;
 let previousMeal: string | null = null;
@@ -202,6 +203,8 @@ function scheduleWorldRefresh(delayMs = 3000): void {
 }
 
 async function refresh(): Promise<void> {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     const response = await fetch("/api/world", { cache: "no-store" });
     if (!response.ok) throw new Error(`World request failed: ${response.status}`);
@@ -209,15 +212,17 @@ async function refresh(): Promise<void> {
     const shouldOpen = stream === null || stream.readyState === EventSource.CLOSED;
     render(snapshot);
     if (shouldOpen) openStream(snapshot.revision);
-    if (streamUnavailable && stream?.readyState !== EventSource.OPEN) {
-      renderStreamUnavailable();
-      scheduleWorldRefresh();
-    }
+    if (streamUnavailable && stream?.readyState !== EventSource.OPEN) renderStreamUnavailable();
   } catch {
-    byId("connection").className = "connection degraded";
-    byId("connection-label").textContent = "Cannot reach the den—retrying";
-    byId("announcement").textContent = "The den could not be reached. Trying again.";
-    scheduleWorldRefresh(5000);
+    if (stream?.readyState !== EventSource.OPEN) {
+      byId("connection").className = "connection degraded";
+      byId("connection-label").textContent = "Cannot reach the den—retrying";
+      byId("announcement").textContent = "The den could not be reached. Trying again.";
+      scheduleWorldRefresh(5000);
+    }
+  } finally {
+    refreshInFlight = false;
+    if (streamUnavailable && stream?.readyState !== EventSource.OPEN) scheduleWorldRefresh();
   }
 }
 
